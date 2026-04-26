@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Fake Internship Detector</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<h1>Fake Internship Detector</h1>
+
+<div style="text-align: center; margin-bottom: 30px;">
+    <a href="/dashboard" style="text-decoration: none;">
+        <button style="background: #3b82f6; box-shadow: 0 0 10px rgba(59, 130, 246, 0.5); padding: 10px 20px; border: none; border-radius: 5px; color: white; cursor: pointer; font-size: 16px;">📊 View Live Analytics</button>
+    </a>
+</div>
+
+<div style="max-width: 1200px; margin: 0 auto 30px auto; background: #111; padding: 20px; border-radius: 15px; box-shadow: 0 0 20px rgba(239, 68, 68, 0.15); border-left: 5px solid #ef4444;">
+    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 15px;">
+        <h2 style="color: #ef4444; margin: 0; font-size: 20px;">🚨 Live Threat Feed: Cybersecurity News</h2>
+        <span style="background: #ef4444; color: white; padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: bold;">LIVE FROM THE HACKER NEWS</span>
+    </div>
+    
+    <div id="newsContainer" style="display: flex; gap: 20px; overflow-x: auto; padding-bottom: 10px;">
+        <p style="color: #888;">⏳ Fetching live threat data...</p>
+    </div>
+</div>
+
+<div style="display: flex; justify-content: center; align-items: flex-start; flex-wrap: wrap; gap: 40px; max-width: 1200px; margin: 0 auto; padding: 0 20px;">
+    <div style="flex: 1; min-width: 450px; background: #111; padding: 30px; border-radius: 15px; box-shadow: 0 0 20px rgba(34, 197, 94, 0.15);">
+        <h2 style="color: #22c55e; margin-top: 0; border-bottom: 1px solid #333; padding-bottom: 10px;">1. Analyze a Job</h2>
+        
+        <textarea id="jobText" placeholder="Paste job description here..." style="width: 100%; height: 150px; box-sizing: border-box; padding: 10px; border-radius: 5px; background: #222; color: white; border: 1px solid #444;"></textarea>
+        <br><br>
+        <button onclick="analyzeJob()" style="width: 100%; padding: 12px; background: #22c55e; border: none; border-radius: 5px; color: white; font-weight: bold; cursor: pointer;">Analyze Job</button>
+
+        <div class="result-container" style="margin-top: 25px;">
+            <div class="left-panel">
+                <div id="progressCircle" class="circle"><span id="riskValue">0%</span></div>
+                <p id="predictionText">Analysis</p>
+            </div>
+            <div class="right-panel">
+                <div id="flags"></div>
+                <h3>Risk Analysis</h3>
+                <div class="category"><p>Financial</p><div class="bar"><div id="financialBar"></div></div></div>
+                <div class="category"><p>Credibility</p><div class="bar"><div id="credibilityBar"></div></div></div>
+                <div class="category"><p>Language</p><div class="bar"><div id="languageBar"></div></div></div>
+                <div class="category"><p>Urgency</p><div class="bar"><div id="urgencyBar"></div></div></div>
+                <div class="category"><p>Contact</p><div class="bar"><div id="contactBar"></div></div></div>
+            </div>
+        </div>
+    </div>
+
+    <div style="flex: 1; min-width: 450px; background: #111; padding: 30px; border-radius: 15px; box-shadow: 0 0 20px rgba(239, 68, 68, 0.15);">
+        <h2 style="color: #ef4444; margin-top: 0; border-bottom: 1px solid #333; padding-bottom: 10px;">2. Report Scam</h2>
+        
+        <input type="text" id="company" list="companyList" placeholder="Company Name" style="width: 100%; padding: 10px; box-sizing: border-box; margin-bottom: 15px; border-radius: 5px; background: #222; color: white; border: 1px solid #444;">
+        <datalist id="companyList">
+            {% for company in companies %}
+                <option value="{{ company }}">
+            {% endfor %}
+        </datalist>
+
+        <textarea id="reportDesc" placeholder="Paste job description..." required style="width: 100%; height: 150px; padding: 10px; box-sizing: border-box; margin-bottom: 15px; border-radius: 5px; background: #222; color: white; border: 1px solid #444;"></textarea>
+        <input type="text" id="reason" placeholder="Reason (Auto-filled)" style="width: 100%; padding: 10px; box-sizing: border-box; margin-bottom: 25px; border-radius: 5px; background: #222; color: white; border: 1px solid #444;">
+        
+        <button onclick="submitReport()" style="background: #ef4444; width: 100%; padding: 12px; border: none; border-radius: 5px; color: white; font-weight: bold; cursor: pointer;">Report Scam</button>
+        <p id="reportMsg" style="margin-top: 15px; font-weight: bold; height: 20px;"></p>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+<script src="/static/script.js"></script>
+</body>
+</html>

@@ -1,0 +1,179 @@
+body {
+    font-family: Arial;
+    background: linear-gradient(to right, #0f172a, #1e293b);
+    color: white;
+    text-align: center;
+}
+
+/* Title */
+h1 {
+    text-shadow: 0 0 10px rgba(34, 197, 94, 0.7);
+}
+
+/* Textarea */
+textarea {
+    width: 70%;
+    height: 120px;
+    padding: 12px;
+    border-radius: 12px;
+    border: 1px solid #333; /* Added slight border for depth */
+    background: #1e293b;
+    color: white;
+    box-shadow: 0 0 10px rgba(34, 197, 94, 0.3);
+    transition: 0.3s;
+}
+
+textarea:focus {
+    outline: none; /* Removes default browser outline */
+    box-shadow: 0 0 20px rgba(34, 197, 94, 0.8);
+    transform: scale(1.02);
+}
+
+/* Inputs */
+input, input[type="file"] {
+    width: 70%;
+    padding: 10px;
+    margin: 8px;
+    border-radius: 10px;
+    border: 1px solid #333;
+    background: #1e293b;
+    color: white;
+}
+
+/* Button */
+button {
+    padding: 12px 24px;
+    background: #22c55e;
+    border: none;
+    border-radius: 10px;
+    color: white;
+    cursor: pointer;
+    font-weight: bold; /* Makes text pop */
+    transition: all 0.3s ease;
+    box-shadow: 0 0 10px rgba(34, 197, 94, 0.5);
+}
+
+button:hover {
+    background: #16a34a;
+    box-shadow: 0 0 20px rgba(34, 197, 94, 0.9),
+                0 0 40px rgba(34, 197, 94, 0.6);
+    transform: scale(1.05);
+}
+
+/* Button click 'press' effect */
+button:active {
+    transform: scale(0.95);
+}
+
+/* RESULT LAYOUT */
+.result-container {
+    display: flex;
+    justify-content: center;
+    gap: 40px;
+    margin-top: 30px;
+}
+
+/* FLOATING PANELS (Merged Glass/Shadow Polish) */
+.left-panel, .right-panel {
+    background: #1e1e1e; /* Darker background to contrast with body */
+    border-radius: 12px;
+    padding: 25px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4); /* Deep shadow */
+    border: 1px solid #333;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.left-panel {
+    width: 250px;
+}
+
+.right-panel {
+    width: 400px;
+    text-align: left;
+}
+
+/* Hover lift effect for the panels */
+.left-panel:hover, .right-panel:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+}
+
+/* CIRCLE */
+.circle {
+    width: 150px;
+    height: 150px;
+    border-radius: 50%;
+    margin: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: conic-gradient(#22c55e 0deg, #1e293b 0deg);
+}
+
+.circle span {
+    font-size: 22px;
+    font-weight: bold;
+}
+
+/* FLAGS */
+.flag {
+    background: rgba(255, 77, 77, 0.15); /* Slightly softer red background */
+    border: 1px solid rgba(255, 77, 77, 0.3); /* Subtle border */
+    color: #ff4d4d;
+    padding: 10px;
+    border-radius: 8px;
+    margin-bottom: 8px;
+}
+
+/* BARS */
+.category {
+    margin: 10px 0;
+}
+
+.bar {
+    width: 100%;
+    height: 8px;
+    background: #0f172a; /* Darker track for the bar */
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.bar div {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(to right, #22c55e, #ef4444);
+    transition: width 0.4s ease;
+}
+
+/* "AI THINKING" ANIMATION (New) */
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.4; }
+    100% { opacity: 1; }
+}
+
+.thinking {
+    animation: pulse 1s infinite;
+    color: #eab308; /* Yellow processing color */
+    text-align: center;
+    margin-top: 20px;
+}
+
+/* SHAKE */
+@keyframes shake {
+    0% { transform: translate(2px, 0); }
+    50% { transform: translate(-2px, 0); }
+    100% { transform: translate(0, 0); }
+}
+
+/* MOBILE */
+@media (max-width: 768px) {
+    .result-container {
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .right-panel, .left-panel {
+        width: 90%;
+    }
+}

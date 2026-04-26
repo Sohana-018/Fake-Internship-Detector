@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Analytics Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+    body{ font-family: Arial; background:#0f2027; color:white; text-align:center; }
+    .container{ width:850px; margin:auto; margin-top:50px; background:#111; padding:30px; border-radius:10px; box-shadow:0 0 20px rgba(0,255,255,0.3); }
+    h1{ color:#00ffff; margin-bottom: 5px; }
+    .card{ background:#1a1a1a; padding:15px; margin:10px; border-radius:8px; display:inline-block; width:180px; vertical-align: top; }
+    .filter-btn { background: #333; color: white; border: 1px solid #555; padding: 8px 15px; cursor: pointer; border-radius: 5px; margin: 0 5px; }
+    .filter-btn.active { background: #00ffff; color: #000; font-weight: bold; border-color: #00ffff; }
+</style>
+</head>
+<body>
+<div class="container">
+    <h1>Scam Analytics Dashboard</h1>
+    
+    <div style="margin-bottom: 25px;">
+        <button class="filter-btn active" id="btn-all" onclick="loadData('')">All Time</button>
+        <button class="filter-btn" id="btn-7" onclick="loadData('7')">Last 7 Days</button>
+        <button class="filter-btn" id="btn-30" onclick="loadData('30')">Last 30 Days</button>
+    </div>
+
+    <div style="text-align: center; margin-bottom: 20px;">
+        <button onclick="window.location.href='/export-summary'" style="background: #3b82f6; padding: 10px 20px; border: none; border-radius: 5px; color: white; cursor: pointer; font-weight: bold; margin-right: 15px;">
+            📄 Download User Summary
+        </button>
+        <button onclick="window.location.href='/export'" style="background: #22c55e; padding: 10px 20px; border: none; border-radius: 5px; color: white; cursor: pointer; font-weight: bold;">
+            ⬇️ Download Raw Data (CSV)
+        </button>
+    </div>
+    
+    <div class="card"><h3>Total</h3><p id="total" style="font-size: 24px;">0</p></div>
+    <div class="card"><h3>Fee</h3><p id="fee" style="font-size: 24px; color:#ef4444;">0</p></div>
+    <div class="card"><h3>Contact</h3><p id="whatsapp" style="font-size: 24px; color:#3b82f6;">0</p></div>
+    
+    <div style="display: flex; justify-content: center; align-items: flex-start; gap: 50px; margin-top: 40px;">
+        <div style="width: 300px;"><canvas id="chart"></canvas></div>
+        <div style="width: 350px; background:#1a1a1a; padding:20px; border-radius:8px; text-align:left;">
+            <h3 style="color:#ef4444; border-bottom:1px solid #333; padding-bottom:10px; margin:0;">🚨 Top Flagged Companies</h3>
+            <ul id="companyList" style="list-style:none; padding:0; margin-top:10px;"></ul>
+        </div>
+    </div>
+</div>
+
+<script>
+let myChart = null; 
+
+function loadData(days) {
+    document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+    if(days === '') document.getElementById('btn-all').classList.add('active');
+    if(days === '7') document.getElementById('btn-7').classList.add('active');
+    if(days === '30') document.getElementById('btn-30').classList.add('active');
+
+    let url = "/analytics";
+    if (days) { url += "?days=" + days; }
+
+    fetch(url).then(res => res.json()).then(data => {
+        document.getElementById("total").innerText = data.total;
+        document.getElementById("fee").innerText = data.fee;
+        document.getElementById("whatsapp").innerText = data.whatsapp;
+        
+        if (myChart != null) { myChart.destroy(); }
+
+        myChart = new Chart(document.getElementById("chart"), {
+            type: "pie",
+            data: {
+                labels: ["Fee Scams", "WhatsApp Scams"],
+                datasets: [{ data: [data.fee, data.whatsapp], backgroundColor: ["#ef4444", "#3b82f6"], borderColor: "#111", borderWidth: 2 }]
+            }
+        });
+
+        const list = document.getElementById("companyList");
+        if (data.top_companies.length === 0) { list.innerHTML = "<li>No flags in this timeframe</li>"; }
+        else { 
+            list.innerHTML = ""; 
+            data.top_companies.forEach(c => {
+                list.innerHTML += `<li style="display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid #222;"><span>🏢 ${c.name}</span> <span style="color:#facc15;">${c.count}</span></li>`;
+            }); 
+        }
+    });
+}
+
+window.onload = () => loadData('');
+</script>
+</body>
+</html>
