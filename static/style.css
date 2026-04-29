@@ -115,14 +115,29 @@ button:active {
     font-weight: bold;
 }
 
-/* FLAGS */
-.flag {
-    background: rgba(255, 77, 77, 0.15); /* Slightly softer red background */
-    border: 1px solid rgba(255, 77, 77, 0.3); /* Subtle border */
-    color: #ff4d4d;
-    padding: 10px;
-    border-radius: 8px;
-    margin-bottom: 8px;
+.flag-badge {
+    display: inline-block;
+    background-color: #fee2e2; /* Soft pastel red */
+    color: #991b1b; /* Deep visible red */
+    padding: 6px 14px;
+    border-radius: 50px; /* Gives it the pill shape */
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin: 4px;
+    border: 1px solid #f87171;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    transition: transform 0.2s;
+}
+
+.flag-badge:hover {
+    transform: scale(1.05);
+}
+
+.flags-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
 }
 
 /* BARS */

@@ -2,7 +2,6 @@ from flask import Flask, render_template, request, jsonify, Response
 import joblib
 import re
 from flask_sqlalchemy import SQLAlchemy
-from PIL import Image
 import io
 import csv
 import pandas as pd
@@ -11,6 +10,7 @@ from datetime import datetime, timedelta
 app = Flask(__name__)
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///reports.db"
 db = SQLAlchemy(app)
+
 # Load AI models
 model = joblib.load("model.pkl")
 vectorizer = joblib.load("vectorizer.pkl")
@@ -32,7 +32,9 @@ except Exception as e:
 
 def detect_red_flags(text):
     text = text.lower()
-    fee_scam = bool(re.search(r"(?<!no\s)(?<!not\s)(?<!zero\s)\b(fee|payment|registration|deposit)\b", text))
+    
+    # Upgraded regex: added "pay", "paid", "rs", "rupees" and the "₹" symbol
+    fee_scam = bool(re.search(r"(?<!no\s)(?<!not\s)(?<!zero\s)\b(fee|payment|registration|deposit|pay|paid|rs|rupees)\b|₹", text))
     
     flags = {
         "Payment Request Detected": fee_scam,
@@ -49,17 +51,15 @@ def home():
 def predict():
     data = request.json
     text = data.get("text", "")
-    text_lower = text.lower()
 
     vec = vectorizer.transform([text])
     prob = model.predict_proba(vec)[0][1]
     
     flags = detect_red_flags(text)
+    
+    # Custom logic: Model probability + manual flag weights
     risk_score = min(int((prob * 100) + (len(flags) * 20)), 100)
     
-    if any(x in text_lower for x in ["pvt", "ltd", "corp", "inc"]):
-        risk_score = max(0, risk_score - 15)
-        
     reason_text = ", ".join(flags) if flags else "High risk score based on language"
 
     return jsonify({
@@ -180,15 +180,13 @@ def api_check_job():
         return jsonify({"error": "Missing 'job_description' parameter"}), 400
         
     text = data["job_description"]
-    text_lower = text.lower()
     
     vec = vectorizer.transform([text])
     prob = model.predict_proba(vec)[0][1]
     flags = detect_red_flags(text)
     risk_score = min(int((prob * 100) + (len(flags) * 20)), 100)
     
-    if any(x in text_lower for x in ["pvt", "ltd", "corp", "inc"]):
-        risk_score = max(0, risk_score - 15)
+    # Bug fix: The pvt/ltd risk score penalty was removed from here to prevent false negatives
         
     return jsonify({
         "status": "success",

@@ -24,11 +24,11 @@ function analyzeJob() {
         document.getElementById("urgencyBar").style.width = data.flags.some(f => f.includes("Urgency")) ? "90%" : "10%";
         document.getElementById("contactBar").style.width = data.flags.some(f => f.includes("WhatsApp")) ? "85%" : "5%";
 
-        const flagsDiv = document.getElementById("flags");
+        const flagsDiv = document.getElementById("red-flags-container");
         flagsDiv.innerHTML = "";
         data.flags.forEach(f => {
             const div = document.createElement("div");
-            div.className = "flag";
+            div.className = "flag-badge";
             div.innerText = "⚠ " + f;
             flagsDiv.appendChild(div);
         });
