@@ -6,7 +6,7 @@ An intelligent, hybrid threat-detection web application designed to analyze job 
 With the rise of remote work, employment scams have become increasingly sophisticated. This project leverages Natural Language Processing (NLP) and Machine Learning to act as a first line of defense. By analyzing the text of job postings, the system calculates a scam probability score and highlights specific red flags (like upfront fees or suspicious redirect links).
 
 ## 🚀 Core Features
-* **Machine Learning Engine:** Utilizes TF-IDF vectorization and a Logistic Regression model to classify text, achieving an accuracy of ~92% on testing data.
+* **Machine Learning Engine:** Utilizes TF-IDF vectorization and a Random Forest model to classify text, achieving an accuracy of ~92% on testing data.
 * **Rule-Based Heuristics:** Employs Regex pattern matching to instantly flag critical warning signs (e.g., WhatsApp/Telegram numbers, "Newbie Bonuses").
 * **Live Analytics Dashboard:** An interactive SQLite-backed dashboard using Chart.js to visualize threat reports by timeframe, company, and scam type.
 * **Interactive Web Interface:** A clean, responsive frontend built with HTML/CSS and Vanilla JavaScript, connected to a Python backend.
