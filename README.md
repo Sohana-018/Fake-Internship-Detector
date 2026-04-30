@@ -13,7 +13,7 @@ With the rise of remote work, employment scams have become increasingly sophisti
 
 ## 🛠️ Technology Stack
 * **Backend:** Python, Flask, SQLite3, SQLAlchemy
-* **Machine Learning & Data:** Scikit-Learn, Pandas, Joblib (TF-IDF, Logistic Regression)
+* **Machine Learning & Data:** Scikit-Learn, Pandas, Joblib (TF-IDF, Random Forest)
 * **Frontend:** HTML5, CSS3, JavaScript, Chart.js
 
 ## 🔮 Future Scope & Enhancements
