@@ -1,2 +1,41 @@
+# Python
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.env
+venv/
+.venv/
+
+# Training & data science scripts (not needed to run the app)
+step1_audit.py
+step2_generate.py
+step34_train.py
+
+# Large data files
+job_data.csv
+data/
+kaggle_companies.csv
+
+# Databases
+instance/
+*.db
+
+# ML model artifacts (large binary files)
+model.pkl
+vectorizer.pkl
+
+# SQLite
+*.sqlite3
+
+# Frontend build output (run `npm run build` locally)
+frontend/dist/
+frontend/node_modules/
+
+# Misc
+.DS_Store
+Thumbs.db
