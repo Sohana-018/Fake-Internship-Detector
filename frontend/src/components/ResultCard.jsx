@@ -1,10 +1,13 @@
 const getIconForFlag = (flag) => {
   const lower = flag.toLowerCase();
-  if (lower.includes('fee') || lower.includes('pay') || lower.includes('deposit')) return '💰';
+  if (lower.includes('fee') || lower.includes('pay') || lower.includes('deposit') || lower.includes('ctc')) return '💰';
   if (lower.includes('email') || lower.includes('gmail')) return '📧';
   if (lower.includes('aadhaar') || lower.includes('pan') || lower.includes('document')) return '🪪';
   if (lower.includes('whatsapp') || lower.includes('telegram') || lower.includes('contact')) return '📱';
   if (lower.includes('stipend') || lower.includes('salary')) return '🤑';
+  if (lower.includes('link') || lower.includes('redirect')) return '🔗';
+  if (lower.includes('eligibility') || lower.includes('phishing')) return '⚠️';
+  if (lower.includes('impersonat') || lower.includes('corporate')) return '🎭';
   return '🚩';
 };
 

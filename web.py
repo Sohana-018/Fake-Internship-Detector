@@ -41,11 +41,20 @@ def handle_preflight():
 # Load improved AI model and threshold
 model_pipeline = None
 threshold = 0.5
-if os.path.exists("model_pipeline.pkl"):
-    model_pipeline = joblib.load("model_pipeline.pkl")
-if os.path.exists("best_threshold.txt"):
-    with open("best_threshold.txt", "r") as f:
-        threshold = float(f.read().strip())
+
+def get_model_and_threshold():
+    global model_pipeline, threshold
+    try:
+        if os.path.exists("best_threshold.txt"):
+            with open("best_threshold.txt", "r") as f:
+                threshold = float(f.read().strip())
+        if model_pipeline is None and os.path.exists("model_pipeline.pkl"):
+            model_pipeline = joblib.load("model_pipeline.pkl")
+    except Exception as e:
+        print("Model loading warning:", e)
+    return model_pipeline, threshold
+
+get_model_and_threshold()
 
 # Database Model
 class Report(db.Model):
@@ -71,7 +80,10 @@ def detect_red_flags(text):
         "WhatsApp/Telegram Contact": bool(re.search(r"\b(whatsapp|telegram)\b", text)),
         "ID/Bank Request (Aadhaar/PAN)": bool(re.search(r"\b(aadhaar|pan|bank account)\b", text)),
         "No Interview / Direct Joining": bool(re.search(r"\b(no interview|direct joining)\b", text)),
-        "Unrealistic Pay": bool(re.search(r'rs \d{5,}|₹\d{5,}', text))
+        "Unrealistic Pay / Exaggerated CTC": bool(re.search(r'(?:rs\.?|₹)\s*[\d,]{4,}|\b\d+[\d,]*\s*(?:lpa|per month)\b', text)),
+        "Suspicious Link / Third-Party Redirect": bool(re.search(r'https?://[^\s\)\]]*(?:link|bit\.ly|tinyurl|forms\.gle|talentsjobs|\.in/links|\.xyz|\.top|\.site|\.online|\.click)', text)),
+        "Unrealistic Blanket Eligibility / Mass Phishing": bool(re.search(r'\b(all (?:college )?students eligible|all (?:eligible )?batches|branches & gender: all eligible|all branches eligible|only candidates with 100% completed profiles?|limited vacancies)\b', text)),
+        "Impersonated Corporate Drive": bool(re.search(r'\b(tcs|infosys|wipro|cognizant|accenture|capgemini|hcl).*(?:hiring drive|internship drive|campus drive)\b', text) and not re.search(r'(tcs\.com|infosys\.com|wipro\.com|cognizant\.com|accenture\.com)', text))
     }
     return [k for k, v in flags.items() if v]
 
@@ -87,8 +99,13 @@ def predict():
     text = data.get("text", "")
 
     # Machine Learning Output
-    if model_pipeline:
-        prob = model_pipeline.predict_proba([text])[0][1]
+    model, thresh = get_model_and_threshold()
+    if model:
+        try:
+            prob = model.predict_proba([text])[0][1]
+        except Exception:
+            model = joblib.load("model_pipeline.pkl")
+            prob = model.predict_proba([text])[0][1]
     else:
         prob = 0.1 # Fallback if model not ready
 
@@ -228,8 +245,13 @@ def api_check_job():
         
     text = data["job_description"]
     
-    if model_pipeline:
-        prob = model_pipeline.predict_proba([text])[0][1]
+    model, thresh = get_model_and_threshold()
+    if model:
+        try:
+            prob = model.predict_proba([text])[0][1]
+        except Exception:
+            model = joblib.load("model_pipeline.pkl")
+            prob = model.predict_proba([text])[0][1]
     else:
         prob = 0.1
         
