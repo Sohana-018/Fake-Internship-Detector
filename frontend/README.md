@@ -1,6 +1,6 @@
 # 🛡️ Fake Internship & Job Scam Detector — Frontend
 
-A modern, high-performance **React 19 + Vite** Single Page Application (SPA) designed for real-time recruitment fraud detection, forensic text profiling, threat telemetry, and machine learning benchmarking.
+A modern, high-performance **React 19 + Vite** Single Page Application (SPA) designed for real-time recruitment fraud detection, threat telemetry, and machine learning benchmarking.
 
 ---
 
@@ -27,23 +27,23 @@ The interface features an executive dual-theme design system engineered for high
 
 ## 🚀 Key Pages & Features
 
-### 1. Home / Scanner Console (`/`)
-- **Interactive Job Scanner:** Paste recruitment emails, messages, or job descriptions with live word/character counters.
-- **Example Quick-Loader:** 1-click test drive with real-world sample scams and verified postings.
-- **Side-by-Side Dual Analysis Grid:**
-  - **Left:** **Detected Threat Indicators** (deduplicated rule matches: upfront fee extortion, personal email domains, off-platform WhatsApp/Telegram redirects, corporate spoofing).
-  - **Right:** **Forensic Text Profile (2x2 Grid)** (Message Length, Vocabulary Diversity, Punctuation Urgency, Capitalization Density).
-- **Security Advisory & 1-Click Escalate:** Quick flow to prefill and submit suspicious postings to the community database.
-- **Cybersecurity Live Feed:** Real-time threat news pulled from The Hacker News RSS feed.
+### 1. Home / Scanner (`/`)
+- **Interactive Job Scanner:** Clean input area for recruitment emails, messages, or job postings with live word/character counters and tall 10-row textarea.
+- **Example Quick-Loader:** 1-click test drive with real-world sample scams and genuine postings ("Genuine Intern", "TCS Phishing", "Fee Trap").
+- **Compact Dual-Column Result Grid:**
+  - **Left (60%):** **Warning Signs Found** (compact 2-column cards of deduplicated rule matches or clean status when none).
+  - **Right (40%):** **What to do & Action Box** (clear safety advice, company verification note, and scam report escalation for likely-scam results).
+- **Collapsible Detection Workflow:** Slim bar ("How this result was produced") expanding on click to show the verification pipeline with step-by-step playback.
+- **Common Scam Signs Helper:** Inline collapsible checklist under the textarea highlighting 5 frequent scam warning signs (registration fees, chat-only interviews, Aadhaar/PAN collection, free email contacts, artificial urgency).
 
-### 2. Threat Intelligence & Benchmark Lab (`/dashboard`)
+### 2. Scam Analytics & Benchmark Lab (`/dashboard`)
 Divided into two dedicated sub-navbar views:
 
-#### 📊 Sub-Tab 1: Threat Telemetry & Trends
-- **Executive Posture Strip:** High-level threat warning and target vector alerts.
+#### 📊 Sub-Tab 1: Detection Trends & Analytics
+- **Pattern Summary Strip:** High-level fraud trend summary and vector highlights.
 - **Operational KPI Cards:** Total scans, Scam interceptions, Verified legitimate postings, Community submissions.
 - **Visual Analytics (Recharts):**
-  - **Chronological Volume Area Chart:** Dual area graph tracking verified vs. fraudulent listings over 7, 30, or 90 days.
+  - **Chronological Volume Area Chart:** Dual area graph tracking verified vs. fraudulent listings over 7D, 30D, or All history.
   - **Threat Vector Donut Chart:** Categorization of tactics (Fee extortion, Phishing, Fake drives).
   - **Most Spoofed Brands:** Horizontal bar chart highlighting corporate targets (TCS, Wipro, Google, etc.).
 - **Forensic Incident Log:** Paginated telemetry records (10 per page) with search, severity meters, and category filters.

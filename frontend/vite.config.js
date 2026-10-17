@@ -10,7 +10,6 @@ export default defineConfig({
       '/report': 'http://localhost:5000',
       '/analytics': 'http://localhost:5000',
       '/export': 'http://localhost:5000',
-      '/export-summary': 'http://localhost:5000',
       '/api': 'http://localhost:5000'
     }
   }

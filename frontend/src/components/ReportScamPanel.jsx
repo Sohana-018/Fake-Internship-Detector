@@ -68,7 +68,7 @@ const ReportScamPanel = ({ initialDescription, initialReason }) => {
       </div>
 
       <p style={{ margin: '0 0 20px 0', fontSize: '0.9rem', color: 'var(--text-muted)', lineHeight: '1.5' }}>
-        Submit verified fake internship drives, scam offers, or extortion messages to the centralized database to protect other students and train future detection heuristics.
+        Submit verified fake internship drives, scam offers, or extortion messages to the centralized database to protect other students and train future detection heuristics. <em style={{ fontSize: '0.84rem', opacity: 0.85 }}>(Note: The community report database is unmoderated and intended for research and public-interest review.)</em>
       </p>
 
       <div style={{ marginBottom: '16px' }}>

@@ -8,9 +8,35 @@ import pandas as pd
 from datetime import datetime, timedelta
 import os
 import json
+import time
+from collections import defaultdict
 
 # Import for joblib to successfully load custom transformer
 from features import HandcraftedFeatures
+
+# ── In-Memory Rate Limiting Configuration (Sliding Window per IP) ──
+RATE_LIMIT_RULES = {
+    "predict": {"max_requests": 60, "window_seconds": 60},  # 60 requests/minute
+    "report": {"max_requests": 15, "window_seconds": 60}     # 15 reports/minute
+}
+_rate_limit_records = defaultdict(lambda: defaultdict(list))
+
+def is_rate_limited(endpoint_key):
+    """Enforces in-memory sliding-window request throttling per IP."""
+    client_ip = request.headers.get("X-Forwarded-For", request.remote_addr or "127.0.0.1").split(",")[0].strip()
+    rule = RATE_LIMIT_RULES.get(endpoint_key, {"max_requests": 60, "window_seconds": 60})
+    now = time.time()
+    window = rule["window_seconds"]
+    max_req = rule["max_requests"]
+
+    history = _rate_limit_records[endpoint_key][client_ip]
+    _rate_limit_records[endpoint_key][client_ip] = [t for t in history if now - t < window]
+
+    if len(_rate_limit_records[endpoint_key][client_ip]) >= max_req:
+        return True
+
+    _rate_limit_records[endpoint_key][client_ip].append(now)
+    return False
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 FRONTEND_DIST = os.path.join(BASE_DIR, "frontend", "dist")
@@ -57,12 +83,21 @@ def get_model_and_threshold():
 
 get_model_and_threshold()
 
-# Database Model
+# Database Models
 class Report(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     company = db.Column(db.String(200))
     description = db.Column(db.Text)
     reason = db.Column(db.String(200))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class ScanEvent(db.Model):
+    """Metadata-only audit table for scan history. Does NOT store full job description text."""
+    id = db.Column(db.Integer, primary_key=True)
+    prediction = db.Column(db.String(50))   # "Fake" or "Legitimate"
+    risk_score = db.Column(db.Integer)      # 0 to 100
+    matched_rules = db.Column(db.String(500)) # Comma-separated rule names
+    company = db.Column(db.String(150), default="Unknown")
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 # Load Kaggle Data for Auto-fill
@@ -88,63 +123,6 @@ def detect_red_flags(text):
     }
     return [k for k, v in flags.items() if v]
 
-def compute_linguistic_stats(text):
-    text_str = str(text or "")
-    words = re.findall(r'\b\w+\b', text_str)
-    word_count = len(words)
-    unique_words = len(set(w.lower() for w in words)) if word_count > 0 else 0
-    lexical_diversity = round((unique_words / word_count) * 100, 1) if word_count > 0 else 0
-    char_count = len(text_str)
-    avg_word_len = round(sum(len(w) for w in words) / word_count, 1) if word_count > 0 else 0
-    exclamation_count = text_str.count('!')
-    question_count = text_str.count('?')
-    total_punctuation = exclamation_count + question_count
-    uppercase_chars = sum(1 for c in text_str if c.isupper())
-    uppercase_ratio = round((uppercase_chars / (char_count + 1)) * 100, 1)
-    
-    # Neutral, descriptive labels (informational only)
-    if word_count < 40:
-        length_label = "Short message"
-    elif word_count <= 140:
-        length_label = "Standard length"
-    else:
-        length_label = "Detailed posting"
-        
-    if lexical_diversity <= 65:
-        diversity_label = "High repetition"
-    elif lexical_diversity <= 80:
-        diversity_label = "Moderate diversity"
-    else:
-        diversity_label = "High diversity"
-        
-    if total_punctuation >= 3:
-        punctuation_label = "High urgency punctuation"
-    elif total_punctuation >= 1:
-        punctuation_label = "Moderate punctuation"
-    else:
-        punctuation_label = "Standard punctuation"
-        
-    if uppercase_ratio >= 10:
-        casing_label = "Elevated uppercase"
-    else:
-        casing_label = "Standard casing"
-        
-    return {
-        "word_count": word_count,
-        "unique_words": unique_words,
-        "lexical_diversity": lexical_diversity,
-        "diversity_label": diversity_label,
-        "char_count": char_count,
-        "avg_word_len": avg_word_len,
-        "exclamation_count": exclamation_count,
-        "question_count": question_count,
-        "total_punctuation": total_punctuation,
-        "punctuation_label": punctuation_label,
-        "uppercase_ratio": uppercase_ratio,
-        "casing_label": casing_label,
-        "length_label": length_label
-    }
-
 @app.route("/")
 def home():
     if os.path.exists(os.path.join(FRONTEND_DIST, "index.html")):
@@ -156,60 +134,235 @@ def home():
 
 @app.route("/predict", methods=["POST"])
 def predict():
-    data = request.json or {}
-    text = data.get("text", "")
+    if is_rate_limited("predict"):
+        return jsonify({
+            "error": "Rate limit exceeded. Maximum 60 analysis requests per minute allowed."
+        }), 429
 
-    # Machine Learning Output
+    data = request.json or {}
+    if not isinstance(data, dict):
+        return jsonify({"error": "Invalid request format. Expected JSON object."}), 400
+
+    raw_text = data.get("text", "")
+    if not isinstance(raw_text, str):
+        return jsonify({"error": "Input 'text' must be a string."}), 400
+
+    text = raw_text.strip()
+    if not text:
+        return jsonify({"error": "Job description text cannot be empty."}), 400
+
+    if len(text) > 25000:
+        return jsonify({
+            "error": "Input text exceeds maximum allowed length of 25,000 characters."
+        }), 400
+
+    pipeline_steps = []
+
+    # 1. Input received
+    t0 = time.perf_counter()
+    word_count = len(text.split())
+    char_count = len(text)
+    limits_passed = (1 <= word_count <= 25000 and char_count <= 25000)
+    t1 = time.perf_counter()
+    pipeline_steps.append({
+        "id": "input_received",
+        "label": "Input received",
+        "status": "done" if limits_passed else "skipped",
+        "detail": f"Parsed {word_count} words ({char_count} chars). Length limits validated (<= 25,000 chars).",
+        "duration_ms": round((t1 - t0) * 1000, 2)
+    })
+
+    # 2. Text cleaning
+    t0 = time.perf_counter()
+    cleaned_text = " ".join(text.split())
+    t1 = time.perf_counter()
+    pipeline_steps.append({
+        "id": "text_cleaning",
+        "label": "Text cleaning",
+        "status": "done",
+        "detail": "Normalized surrounding whitespace and prepared canonical string for regex pattern rules and tokenization.",
+        "duration_ms": round((t1 - t0) * 1000, 2)
+    })
+
+    # 3. Rule checks
+    t0 = time.perf_counter()
+    flags = detect_red_flags(cleaned_text)
+    t1 = time.perf_counter()
+    rule_detail = f"Triggered {len(flags)} heuristic rule(s): {', '.join(flags)}." if flags else "0 heuristic rule triggers detected; all heuristic pattern checks passed clean."
+    pipeline_steps.append({
+        "id": "rule_checks",
+        "label": "Rule checks",
+        "status": "done",
+        "detail": rule_detail,
+        "duration_ms": round((t1 - t0) * 1000, 2)
+    })
+
+    # 4. Feature extraction
+    t0 = time.perf_counter()
     model, thresh = get_model_and_threshold()
+    feats = None
+    if model and hasattr(model, "named_steps") and "features" in model.named_steps:
+        try:
+            feats = model.named_steps["features"].transform([cleaned_text])
+            nnz_count = int(feats.nnz)
+            n_features = int(feats.shape[1])
+            fe_status = "done"
+            fe_detail = f"Generated {n_features} features (5,000 TF-IDF unigrams/bigrams + 14 handcrafted indicators). Non-zero features: {nnz_count}."
+        except Exception as fe_err:
+            fe_status = "skipped"
+            fe_detail = f"Feature extraction fallback: {fe_err}"
+    else:
+        fe_status = "skipped"
+        fe_detail = "Feature pipeline transformer not accessible."
+    t1 = time.perf_counter()
+    pipeline_steps.append({
+        "id": "feature_extraction",
+        "label": "Feature extraction",
+        "status": fe_status,
+        "detail": fe_detail,
+        "duration_ms": round((t1 - t0) * 1000, 2)
+    })
+
+    # 5. Model scoring
+    t0 = time.perf_counter()
     if model:
         try:
-            prob = model.predict_proba([text])[0][1]
+            if feats is not None and hasattr(model, "named_steps") and "clf" in model.named_steps:
+                prob = float(model.named_steps["clf"].predict_proba(feats)[0][1])
+            else:
+                prob = float(model.predict_proba([cleaned_text])[0][1])
+            ms_status = "done"
+            ms_detail = f"Logistic Regression inferred {prob * 100:.1f}% scam probability (class_weight='balanced')."
         except Exception:
             model = joblib.load("model_pipeline.pkl")
-            prob = model.predict_proba([text])[0][1]
+            prob = float(model.predict_proba([cleaned_text])[0][1])
+            ms_status = "done"
+            ms_detail = f"Logistic Regression inferred {prob * 100:.1f}% scam probability."
     else:
-        prob = 0.1 # Fallback if model not ready
+        prob = 0.1
+        ms_status = "skipped"
+        ms_detail = "Model not initialized; used baseline probability."
+    t1 = time.perf_counter()
+    pipeline_steps.append({
+        "id": "model_scoring",
+        "label": "Model scoring",
+        "status": ms_status,
+        "detail": ms_detail,
+        "duration_ms": round((t1 - t0) * 1000, 2)
+    })
 
-    # Hybrid Rule Engine Layer
-    flags = detect_red_flags(text)
-    
-    # If 2 or more strong rules trigger, force "Fake"
+    # 6. Threshold decision
+    t0 = time.perf_counter()
+    prob_pct = round(prob * 100, 1)
+    thresh_pct = round(threshold * 100, 1)
+    is_above = prob >= threshold
+    t1 = time.perf_counter()
+    pipeline_steps.append({
+        "id": "threshold_decision",
+        "label": "Threshold decision",
+        "status": "done",
+        "detail": f"Evaluated against {threshold:.2f} ({thresh_pct}%) threshold: model probability {prob_pct}% is {'above or equal to' if is_above else 'below'} decision threshold.",
+        "duration_ms": round((t1 - t0) * 1000, 2)
+    })
+
+    # 7. Final verdict
+    t0 = time.perf_counter()
     if len(flags) >= 2:
         prediction = "Fake"
-        risk_score = max(80, int((prob * 100) + (len(flags) * 15))) # Boost score
+        raw_score = max(80, int((prob * 100) + (len(flags) * 15)))
+        risk_score = min(raw_score, 100)
+        verdict_action = f"Enforced Fake verdict and elevated risk score to {risk_score}% due to {len(flags)} critical rule matches."
     else:
-        # Standard ML + small rule blending
-        risk_score = int((prob * 100) + (len(flags) * 10))
+        raw_score = int((prob * 100) + (len(flags) * 10))
+        risk_score = min(raw_score, 100)
         prediction = "Fake" if prob >= threshold or risk_score > 50 else "Legitimate"
-        
-    risk_score = min(risk_score, 100)
+        if len(flags) == 1:
+            verdict_action = f"Combined ML score with single rule bonus (+10%), yielding {risk_score}% risk score."
+        else:
+            verdict_action = f"Prediction determined directly by ML model probability with 0 heuristic overrides ({risk_score}% risk score)."
+
     reason_text = ", ".join(flags) if flags else "High risk based on machine learning language analysis"
-    
-    # Informational linguistic profile (does not alter prediction or risk_score)
-    linguistics = compute_linguistic_stats(text)
+    t1 = time.perf_counter()
+    pipeline_steps.append({
+        "id": "final_verdict",
+        "label": "Final verdict",
+        "status": "done",
+        "detail": f"Classified as '{prediction}' with {risk_score}% composite risk score. {verdict_action}",
+        "duration_ms": round((t1 - t0) * 1000, 2)
+    })
+
+    # Record scan event metadata into SQLite (stores NO full posting text)
+    try:
+        extracted_comp = "Unknown"
+        m = re.search(r'\b(tcs|infosys|wipro|cognizant|accenture|capgemini|hcl|google|amazon|microsoft|deloitte|reliance|tata|meta|apple)\b', cleaned_text, re.I)
+        if m:
+            extracted_comp = m.group(1).upper()
+        
+        scan_rec = ScanEvent(
+            prediction=prediction,
+            risk_score=risk_score,
+            matched_rules=", ".join(flags) if flags else "Machine Learning",
+            company=extracted_comp,
+            created_at=datetime.utcnow()
+        )
+        db.session.add(scan_rec)
+        db.session.commit()
+    except Exception as scan_err:
+        app.logger.warning(f"Could not record scan event: {scan_err}")
 
     return jsonify({
         "prediction": prediction,
         "risk_score": risk_score,
         "flags": flags,
         "reason": reason_text,
-        "linguistics": linguistics
+        "pipeline": pipeline_steps
     })
 
 @app.route("/report", methods=["POST"])
 def report():
-    data = request.json
+    if is_rate_limited("report"):
+        return jsonify({
+            "message": "Rate limit exceeded. Maximum 15 report submissions per minute allowed.",
+            "error": "Rate limit exceeded"
+        }), 429
+
+    data = request.json or {}
+    if not isinstance(data, dict):
+        return jsonify({
+            "message": "Invalid request format. Expected JSON object.",
+            "error": "Invalid format"
+        }), 400
+
+    company = str(data.get("company", "Unknown")).strip()[:150] or "Unknown"
+    description = str(data.get("description", "")).strip()
+    reason = str(data.get("reason", "Not specified")).strip()[:200] or "Not specified"
+
+    if not description:
+        return jsonify({
+            "message": "Description of the scam cannot be empty.",
+            "error": "Missing description"
+        }), 400
+
+    if len(description) > 5000:
+        return jsonify({
+            "message": "Description exceeds maximum allowed length of 5,000 characters.",
+            "error": "Description too long"
+        }), 400
+
     try:
+        # NOTE: The community report database is unmoderated and stores user-submitted entries.
         new_rep = Report(
-            company=data.get("company", "Unknown"),
-            description=data.get("description", ""),
-            reason=data.get("reason", "Not specified")
+            company=company,
+            description=description,
+            reason=reason
         )
         db.session.add(new_rep)
         db.session.commit()
-        return jsonify({"message": "Report saved successfully!"})
+        return jsonify({
+            "message": "Report saved successfully! Note: The community database is unmoderated."
+        })
     except Exception as e:
-        return jsonify({"message": f"Error: {str(e)}"}), 500
+        return jsonify({"message": f"Error: {str(e)}", "error": str(e)}), 500
 
 @app.route("/dashboard")
 def dashboard():
@@ -223,34 +376,129 @@ def dashboard():
 @app.route("/analytics")
 def get_analytics():
     days = request.args.get('days')
-    query_base = Report.query
-
+    cutoff_date = None
     if days and days.isdigit():
         cutoff_date = datetime.utcnow() - timedelta(days=int(days))
-        query_base = query_base.filter(Report.created_at >= cutoff_date)
 
-    total = query_base.count()
-    fee_count = query_base.filter(Report.reason.contains("Payment/Fee Requested")).count()
-    whatsapp_count = query_base.filter(Report.reason.contains("WhatsApp/Telegram Contact")).count()
-    
-    top_companies_query = db.session.query(Report.company, db.func.count(Report.company).label('count')) \
-        .filter(Report.company != "") \
-        .filter(Report.company != "Unknown")
-        
-    if days and days.isdigit():
-        top_companies_query = top_companies_query.filter(Report.created_at >= cutoff_date)
+    # Total counts in database
+    total_db_scans = ScanEvent.query.count()
+    total_db_reports = Report.query.count()
+    total_db_records = total_db_scans + total_db_reports
+    has_enough_data = (total_db_records >= 10)
 
-    top_companies_query = top_companies_query.group_by(Report.company) \
-        .order_by(db.func.count(Report.company).desc()) \
-        .limit(5).all()
-        
-    top_companies = [{"name": row.company, "count": row.count} for row in top_companies_query]
+    # Filtered queries by timeframe
+    scan_q = ScanEvent.query
+    report_q = Report.query
+    if cutoff_date:
+        scan_q = scan_q.filter(ScanEvent.created_at >= cutoff_date)
+        report_q = report_q.filter(Report.created_at >= cutoff_date)
+
+    scans = scan_q.order_by(ScanEvent.created_at.desc()).all()
+    reports = report_q.order_by(Report.created_at.desc()).all()
+
+    total_scans = len(scans)
+    fake_scans = sum(1 for s in scans if s.prediction == "Fake")
+    genuine_scans = sum(1 for s in scans if s.prediction == "Legitimate")
+    total_reports = len(reports)
+    total_items = total_scans + total_reports
+    fake_total = fake_scans + total_reports
+    scam_rate = round((fake_total / total_items) * 100, 1) if total_items > 0 else 0
+
+    # Daily aggregation timeline
+    day_counts = defaultdict(lambda: {"Critical Threats": 0, "High Risk Warnings": 0, "Verified Postings": 0, "Total": 0})
+    for s in scans:
+        d_str = s.created_at.strftime('%b %d')
+        day_counts[d_str]["Total"] += 1
+        if s.risk_score >= 80:
+            day_counts[d_str]["Critical Threats"] += 1
+        elif s.risk_score >= 50:
+            day_counts[d_str]["High Risk Warnings"] += 1
+        else:
+            day_counts[d_str]["Verified Postings"] += 1
+
+    for r in reports:
+        d_str = r.created_at.strftime('%b %d')
+        day_counts[d_str]["Total"] += 1
+        day_counts[d_str]["Critical Threats"] += 1
+
+    timeline = [{"date": k, **v} for k, v in day_counts.items()]
+
+    # Category / Threat Vector aggregation
+    category_counts = defaultdict(int)
+    for s in scans:
+        if s.matched_rules:
+            for r in s.matched_rules.split(","):
+                r_clean = r.strip()
+                if r_clean and r_clean != "None":
+                    category_counts[r_clean] += 1
+    for r in reports:
+        if r.reason:
+            for part in r.reason.split(","):
+                p_clean = part.strip()
+                if p_clean and p_clean != "None":
+                    category_counts[p_clean] += 1
+
+    sorted_cats = sorted(category_counts.items(), key=lambda x: x[1], reverse=True)
+    vector_data = [{"name": k, "value": v} for k, v in sorted_cats[:6]]
+
+    # Impersonated Companies
+    comp_counts = defaultdict(int)
+    for s in scans:
+        if s.company and s.company.upper() not in ["UNKNOWN", ""]:
+            comp_counts[s.company.upper()] += 1
+    for r in reports:
+        if r.company and r.company.upper() not in ["UNKNOWN", ""]:
+            comp_counts[r.company.upper()] += 1
+
+    sorted_comps = sorted(comp_counts.items(), key=lambda x: x[1], reverse=True)
+    top_companies = [{"name": k, "count": v} for k, v in sorted_comps[:7]]
+
+    # Recent activity records
+    combined_records = []
+    for s in scans[:50]:
+        combined_records.append({
+            "id": f"SCN-{s.id}",
+            "date": s.created_at.isoformat(),
+            "company": s.company,
+            "role": "Scanned Job Posting",
+            "category": s.matched_rules or "General Scan",
+            "prediction": s.prediction,
+            "riskScore": s.risk_score,
+            "confidence": s.risk_score if s.prediction == "Fake" else (100 - s.risk_score),
+            "flagCount": len(s.matched_rules.split(",")) if s.matched_rules and s.matched_rules != "None" else 0,
+            "type": "Scan"
+        })
+    for r in reports[:20]:
+        combined_records.append({
+            "id": f"REP-{r.id}",
+            "date": r.created_at.isoformat(),
+            "company": r.company or "Unknown",
+            "role": (r.description[:35] + "...") if len(r.description) > 35 else r.description,
+            "category": r.reason or "Community Report",
+            "prediction": "Fake",
+            "riskScore": 100,
+            "confidence": 100,
+            "flagCount": 1,
+            "type": "Report"
+        })
+
+    combined_records.sort(key=lambda x: x["date"], reverse=True)
 
     return jsonify({
-        "total": total, 
-        "fee": fee_count, 
-        "whatsapp": whatsapp_count,
-        "top_companies": top_companies
+        "has_enough_data": has_enough_data,
+        "total_db_records": total_db_records,
+        "total_db_scans": total_db_scans,
+        "total_db_reports": total_db_reports,
+        "filtered_stats": {
+            "total": total_items,
+            "fake": fake_total,
+            "genuine": genuine_scans,
+            "rate": scam_rate
+        },
+        "timeline": timeline,
+        "vector_data": vector_data,
+        "top_companies": top_companies,
+        "records": combined_records
     })
 
 @app.route("/api/metrics")
@@ -280,81 +528,14 @@ def export_csv():
         headers={"Content-Disposition": "attachment;filename=scam_reports_raw.csv"}
     )
 
-@app.route("/export-summary")
-def export_summary():
-    total = Report.query.count()
-    fee_count = Report.query.filter(Report.reason.contains("Payment/Fee Requested")).count()
-    whatsapp_count = Report.query.filter(Report.reason.contains("WhatsApp/Telegram Contact")).count()
-    
-    top_companies_query = db.session.query(Report.company, db.func.count(Report.company).label('count')) \
-        .filter(Report.company != "") \
-        .filter(Report.company != "Unknown") \
-        .group_by(Report.company) \
-        .order_by(db.func.count(Report.company).desc()) \
-        .limit(5).all()
-        
-    summary = "========================================\n"
-    summary += "      SCAM ANALYTICS SUMMARY REPORT     \n"
-    summary += "========================================\n\n"
-    summary += f"Total Fake Jobs Reported: {total}\n"
-    summary += f"Scams Requesting Upfront Fees: {fee_count}\n"
-    summary += f"Scams Pushing to WhatsApp/Telegram: {whatsapp_count}\n\n"
-    summary += "🚨 HIGH RISK - TOP 5 IMPERSONATED COMPANIES:\n"
-    
-    if not top_companies_query:
-        summary += "- No company data available yet.\n"
-    else:
-        for row in top_companies_query:
-            summary += f"- {row.company} ({row.count} flags)\n"
-            
-    summary += "\n========================================\n"
-    summary += "Generated by the Fake Internship Detector"
-        
-    return Response(
-        summary,
-        mimetype="text/plain",
-        headers={"Content-Disposition": "attachment;filename=scam_summary_report.txt"}
-    )
-
 @app.route("/api/v1/check-job", methods=["POST"])
 def api_check_job():
-    data = request.json
-    if not data or "job_description" not in data:
-        return jsonify({"error": "Missing 'job_description' parameter"}), 400
-        
-    text = data["job_description"]
-    
-    model, thresh = get_model_and_threshold()
-    if model:
-        try:
-            prob = model.predict_proba([text])[0][1]
-        except Exception:
-            model = joblib.load("model_pipeline.pkl")
-            prob = model.predict_proba([text])[0][1]
-    else:
-        prob = 0.1
-        
-    flags = detect_red_flags(text)
-    linguistics = compute_linguistic_stats(text)
-    
-    if len(flags) >= 2:
-        prediction = "Fake"
-        risk_score = max(80, int((prob * 100) + (len(flags) * 15)))
-    else:
-        risk_score = int((prob * 100) + (len(flags) * 10))
-        prediction = "Fake" if prob >= threshold or risk_score > 50 else "Legitimate"
-        
-    risk_score = min(risk_score, 100)
-        
-    return jsonify({
-        "status": "success",
-        "data": {
-            "prediction": prediction,
-            "risk_score": risk_score,
-            "flags_detected": flags,
-            "linguistics": linguistics
-        }
-    })
+    """Thin backwards-compatibility alias for /predict."""
+    data = request.json or {}
+    if isinstance(data, dict) and "job_description" in data and "text" not in data:
+        data["text"] = data["job_description"]
+    # Re-dispatch internally to /predict
+    return predict()
 
 @app.route("/<path:path>")
 def serve_static_or_spa(path):

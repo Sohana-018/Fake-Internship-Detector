@@ -31,10 +31,11 @@ const CustomChartTooltip = ({ active, payload, label }) => {
 };
 
 const Analytics = () => {
-  const [days, setDays] = useState(30);
+  const [days, setDays] = useState(30); // 7, 30, null (All)
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [liveDbStats, setLiveDbStats] = useState(null);
+  const [showSampleData, setShowSampleData] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const PAGE_SIZE = 10;
   const [activeTab, setActiveTab] = useState("telemetry"); // "telemetry" | "benchmarks"
@@ -58,34 +59,41 @@ const Analytics = () => {
     setCurrentPage(1);
   }, [searchTerm, categoryFilter, days]);
 
-  // Fetch live reports from Flask SQLite backend
+  // Fetch live reports & scan history from Flask SQLite backend
   useEffect(() => {
-    fetch('/analytics')
+    const url = days ? `/analytics?days=${days}` : '/analytics';
+    fetch(url)
       .then(res => res.json())
       .then(data => setLiveDbStats(data))
       .catch(() => setLiveDbStats(null));
   }, [days]);
 
-  // Filter telemetry data by timeframe
-  const { currentData, previousData } = useMemo(() => {
+  const hasEnoughData = Boolean(liveDbStats && liveDbStats.has_enough_data);
+  const isUsingSample = showSampleData || !hasEnoughData;
+
+  // Filter sample data by timeframe when sample mode is active
+  const { currentSampleData, previousSampleData } = useMemo(() => {
     const now = new Date("2026-10-17T12:00:00Z");
+    if (!days) {
+      return { currentSampleData: mockAnalyticsData, previousSampleData: [] };
+    }
     const cutoff = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
     const prevCutoff = new Date(now.getTime() - 2 * days * 24 * 60 * 60 * 1000);
 
     const current = mockAnalyticsData.filter(d => new Date(d.date) >= cutoff);
     const previous = mockAnalyticsData.filter(d => new Date(d.date) >= prevCutoff && new Date(d.date) < cutoff);
-    return { currentData: current, previousData: previous };
+    return { currentSampleData: current, previousSampleData: previous };
   }, [days]);
 
-  // Operational metrics
-  const stats = useMemo(() => {
-    const total = currentData.length;
-    const fake = currentData.filter(d => d.prediction === "Fake").length;
+  // Operational metrics for sample data
+  const sampleStats = useMemo(() => {
+    const total = currentSampleData.length;
+    const fake = currentSampleData.filter(d => d.prediction === "Fake").length;
     const genuine = total - fake;
     const rate = total > 0 ? ((fake / total) * 100).toFixed(1) : 0;
 
-    const prevTotal = previousData.length;
-    const prevFake = previousData.filter(d => d.prediction === "Fake").length;
+    const prevTotal = previousSampleData.length;
+    const prevFake = previousSampleData.filter(d => d.prediction === "Fake").length;
     const prevRate = prevTotal > 0 ? ((prevFake / prevTotal) * 100).toFixed(1) : 0;
 
     const rateDiff = (rate - prevRate).toFixed(1);
@@ -97,13 +105,13 @@ const Analytics = () => {
       rate: parseFloat(rate),
       rateDiff: (rateDiff > 0 ? '+' : '') + rateDiff + '%'
     };
-  }, [currentData, previousData]);
+  }, [currentSampleData, previousSampleData]);
 
-  // Chart data groupings
-  const { timelineData, vectorData, companyData, severityBreakdown } = useMemo(() => {
+  // Sample data chart groupings
+  const { sampleTimelineData, sampleVectorData, sampleCompanyData, sampleSeverity } = useMemo(() => {
     // 1. Timeline
     const dateMap = {};
-    const sorted = [...currentData].sort((a, b) => new Date(a.date) - new Date(b.date));
+    const sorted = [...currentSampleData].sort((a, b) => new Date(a.date) - new Date(b.date));
     sorted.forEach(d => {
       const dateStr = new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
       if (!dateMap[dateStr]) {
@@ -122,59 +130,108 @@ const Analytics = () => {
         dateMap[dateStr]["Verified Postings"]++;
       }
     });
-    const timelineData = Object.values(dateMap);
+    const sampleTimelineData = Object.values(dateMap);
 
     // 2. Vector breakdown (Pie)
     const catMap = {};
-    currentData.filter(d => d.prediction === "Fake").forEach(d => {
+    currentSampleData.filter(d => d.prediction === "Fake").forEach(d => {
       const cat = d.category || "Unclassified Threat";
       catMap[cat] = (catMap[cat] || 0) + 1;
     });
-    const vectorData = Object.keys(catMap).map(k => ({ name: k, count: catMap[k] })).sort((a, b) => b.count - a.count);
+    const sampleVectorData = Object.keys(catMap).map(k => ({ name: k, count: catMap[k] })).sort((a, b) => b.count - a.count);
 
     // 3. Top Impersonated Companies (Bar)
     const compMap = {};
-    currentData.filter(d => d.prediction === "Fake").forEach(d => {
+    currentSampleData.filter(d => d.prediction === "Fake").forEach(d => {
       compMap[d.company] = (compMap[d.company] || 0) + 1;
     });
-    const companyData = Object.keys(compMap)
+    const sampleCompanyData = Object.keys(compMap)
       .map(k => ({ name: k, count: compMap[k] }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 6);
 
     // 4. Severity
-    const critical = currentData.filter(d => d.riskScore >= 90).length;
-    const high = currentData.filter(d => d.riskScore >= 70 && d.riskScore < 90).length;
-    const moderate = currentData.filter(d => d.riskScore >= 50 && d.riskScore < 70).length;
-    const safe = currentData.filter(d => d.riskScore < 50).length;
+    const critical = currentSampleData.filter(d => d.riskScore >= 90).length;
+    const high = currentSampleData.filter(d => d.riskScore >= 70 && d.riskScore < 90).length;
+    const moderate = currentSampleData.filter(d => d.riskScore >= 50 && d.riskScore < 70).length;
+    const safe = currentSampleData.filter(d => d.riskScore < 50).length;
 
     return {
-      timelineData,
-      vectorData,
-      companyData,
-      severityBreakdown: { critical, high, moderate, safe }
+      sampleTimelineData,
+      sampleVectorData,
+      sampleCompanyData,
+      sampleSeverity: { critical, high, moderate, safe }
     };
-  }, [currentData]);
+  }, [currentSampleData]);
+
+  // Real Database Metrics & Groupings
+  const realStats = useMemo(() => {
+    if (!liveDbStats?.filtered_stats) {
+      return { total: 0, fake: 0, genuine: 0, rate: 0, rateDiff: null };
+    }
+    return {
+      total: liveDbStats.filtered_stats.total,
+      fake: liveDbStats.filtered_stats.fake,
+      genuine: liveDbStats.filtered_stats.genuine,
+      rate: liveDbStats.filtered_stats.rate,
+      rateDiff: null
+    };
+  }, [liveDbStats]);
+
+  const realTimelineData = useMemo(() => {
+    return liveDbStats?.timeline || [];
+  }, [liveDbStats]);
+
+  const realVectorData = useMemo(() => {
+    return (liveDbStats?.vector_data || []).map(v => ({ name: v.name, count: v.value || v.count }));
+  }, [liveDbStats]);
+
+  const realCompanyData = useMemo(() => {
+    return liveDbStats?.top_companies || [];
+  }, [liveDbStats]);
+
+  const realSeverity = useMemo(() => {
+    const recs = liveDbStats?.records || [];
+    const critical = recs.filter(d => d.riskScore >= 90).length;
+    const high = recs.filter(d => d.riskScore >= 70 && d.riskScore < 90).length;
+    const moderate = recs.filter(d => d.riskScore >= 50 && d.riskScore < 70).length;
+    const safe = recs.filter(d => d.riskScore < 50).length;
+    return { critical, high, moderate, safe };
+  }, [liveDbStats]);
+
+  // Active data selection
+  const activeStats = isUsingSample ? sampleStats : realStats;
+  const activeTimeline = isUsingSample ? sampleTimelineData : realTimelineData;
+  const activeVectors = isUsingSample ? sampleVectorData : realVectorData;
+  const activeCompanies = isUsingSample ? sampleCompanyData : realCompanyData;
+  const activeSeverity = isUsingSample ? sampleSeverity : realSeverity;
+  const activeIncidents = useMemo(() => {
+    return isUsingSample ? currentSampleData : (liveDbStats?.records || []);
+  }, [isUsingSample, currentSampleData, liveDbStats]);
 
   // Filtered incidents for table
   const filteredIncidents = useMemo(() => {
-    return currentData.filter(item => {
+    return activeIncidents.filter(item => {
+      const company = item.company || '';
+      const role = item.role || '';
+      const category = item.category || '';
+      const location = item.location || '';
       const matchesSearch = 
-        item.company.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.role.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (item.category && item.category.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        item.location.toLowerCase().includes(searchTerm.toLowerCase());
+        company.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        role.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        category.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        location.toLowerCase().includes(searchTerm.toLowerCase());
 
       if (!matchesSearch) return false;
 
       if (categoryFilter === 'ALL') return true;
       if (categoryFilter === 'SCAMS') return item.prediction === 'Fake';
       if (categoryFilter === 'LEGIT') return item.prediction === 'Legitimate';
-      if (categoryFilter === 'CAMPUS') return item.category && item.category.includes('Campus');
-      if (categoryFilter === 'PAYMENT') return item.category && item.category.includes('Deposit');
+      if (categoryFilter === 'CAMPUS') return category.toLowerCase().includes('campus');
+      if (categoryFilter === 'PAYMENT') return category.toLowerCase().includes('deposit') || category.toLowerCase().includes('fee') || category.toLowerCase().includes('payment');
       return true;
     });
-  }, [currentData, searchTerm, categoryFilter]);
+  }, [activeIncidents, searchTerm, categoryFilter]);
 
   // Pagination logic (10 records per page)
   const totalPages = Math.ceil(filteredIncidents.length / PAGE_SIZE) || 1;
@@ -217,58 +274,58 @@ const Analytics = () => {
   return (
     <div className="analytics-page animate-fade-in">
       
-      {/* Top Breadcrumb & Live System Status */}
+      {/* Top Breadcrumb & Engine Status */}
       <div className="analytics-top-bar">
         <div className="analytics-breadcrumbs">
           <Link to="/">Home</Link>
           <span>/</span>
-          <span style={{ color: 'var(--text-main)', fontWeight: 600 }}>Threat Intelligence</span>
+          <span style={{ color: 'var(--text-main)', fontWeight: 600 }}>Scam Analytics</span>
         </div>
         <div className="analytics-live-status">
           <span className="live-pulse-dot"></span>
-          <span>Telemetry Live • ML Engine v2.4</span>
+          <span>SQLite Engine • Local Telemetry</span>
         </div>
       </div>
 
       {/* Main Header & Global Actions */}
       <div className="analytics-header-section">
         <div className="analytics-headline-group">
-          <h1>Threat Intelligence & Scam Telemetry</h1>
+          <h1>Scam Analytics & Detection Activity</h1>
           <p className="analytics-subtitle">
-            Forensic analysis across AI-evaluated job postings, detected corporate spoofing vectors, and live community scam submissions.
+            Aggregated statistics across evaluated job postings, detected scam patterns, and community scam submissions.
           </p>
         </div>
 
         <div className="analytics-actions">
-          {/* Segmented Time Control */}
+          {/* Segmented Time Control: 7D, 30D, All */}
           <div className="segmented-control" role="group" aria-label="Timeframe selection">
             <button 
+              type="button"
               className={`segment-btn ${days === 7 ? 'active' : ''}`} 
               onClick={() => setDays(7)}
             >
               7D
             </button>
             <button 
+              type="button"
               className={`segment-btn ${days === 30 ? 'active' : ''}`} 
               onClick={() => setDays(30)}
             >
               30D
             </button>
             <button 
-              className={`segment-btn ${days === 90 ? 'active' : ''}`} 
-              onClick={() => setDays(90)}
+              type="button"
+              className={`segment-btn ${days === null ? 'active' : ''}`} 
+              onClick={() => setDays(null)}
             >
-              90D
+              All
             </button>
           </div>
 
-          {/* Export Actions (Connected to real backend API endpoints) */}
+          {/* Export Actions (CSV Only) */}
           <div className="action-btn-group">
             <a href="/export" className="btn-telemetry-action" download="scam_reports_raw.csv">
               📥 Export CSV
-            </a>
-            <a href="/export-summary" className="btn-telemetry-action" download="threat_summary_report.txt">
-              📄 Briefing TXT
             </a>
           </div>
         </div>
@@ -282,7 +339,7 @@ const Analytics = () => {
           onClick={() => setActiveTab('telemetry')}
         >
           <span className="sub-nav-icon">📊</span>
-          <span>Threat Telemetry & Trends</span>
+          <span>Detection Trends & Analytics</span>
         </button>
 
         <button 
@@ -298,419 +355,509 @@ const Analytics = () => {
 
       {activeTab === 'telemetry' && (
         <>
-          {/* Executive Threat Posture Alert Strip */}
-          <div className="threat-posture-strip">
-        <div className="posture-left">
-          <span className="posture-pill">
-            ⚠️ Alert: Elevated Risk
-          </span>
-          <span className="posture-desc">
-            Campus placement phishing & upfront deposit requests represent <strong>74%</strong> of active threats this period.
-          </span>
-        </div>
-        <div className="posture-meta-items">
-          <div className="posture-meta-item">
-            Lead Target: <strong>TCS & Tech Placement Drives</strong>
-          </div>
-          <div className="posture-meta-item">
-            Avg Threat Score: <strong>{stats.rate}%</strong>
-          </div>
-        </div>
-      </div>
-
-      {/* 4 Core Operational KPI Stat Cards */}
-      <div className="telemetry-kpi-grid">
-        <div className="kpi-tile">
-          <div className="kpi-tile-header">
-            <span className="kpi-label">Analyzed Postings</span>
-            <span className="kpi-icon-badge">🔍</span>
-          </div>
-          <div className="kpi-val">{stats.total}</div>
-          <div className="kpi-footer">
-            <span className="kpi-trend-pill trend-neutral">{(stats.total / (days || 1)).toFixed(1)} / day</span>
-            <span>daily scan velocity</span>
-          </div>
-        </div>
-
-        <div className="kpi-tile">
-          <div className="kpi-tile-header">
-            <span className="kpi-label">Scam Interceptions</span>
-            <span className="kpi-icon-badge">🚨</span>
-          </div>
-          <div className="kpi-val" style={{ color: PALETTE.danger }}>{stats.fake}</div>
-          <div className="kpi-footer">
-            <span className="kpi-trend-pill trend-danger">{stats.rate}% of total</span>
-            <span>flagged fraudulent</span>
-          </div>
-        </div>
-
-        <div className="kpi-tile">
-          <div className="kpi-tile-header">
-            <span className="kpi-label">Verified Legitimate</span>
-            <span className="kpi-icon-badge">🛡️</span>
-          </div>
-          <div className="kpi-val" style={{ color: PALETTE.success }}>{stats.genuine}</div>
-          <div className="kpi-footer">
-            <span className="kpi-trend-pill trend-success">{(100 - stats.rate).toFixed(1)}% clean</span>
-            <span>passed model checks</span>
-          </div>
-        </div>
-
-        <div className="kpi-tile">
-          <div className="kpi-tile-header">
-            <span className="kpi-label">Community Submissions</span>
-            <span className="kpi-icon-badge">📑</span>
-          </div>
-          <div className="kpi-val" style={{ color: PALETTE.purple }}>
-            {liveDbStats ? liveDbStats.total : 14}
-          </div>
-          <div className="kpi-footer">
-            <span className="kpi-trend-pill trend-neutral">
-              {liveDbStats ? `${liveDbStats.fee} Fee Traps` : "SQLite Sync Active"}
-            </span>
-            <span>user reported</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Visual Analytics Charts Grid */}
-      <div className="telemetry-charts-grid">
-        
-        {/* 1. Area Chart: Timeline Volume */}
-        <div className="chart-card chart-card-span-2">
-          <div className="chart-card-header">
-            <div>
-              <h3 className="chart-card-title">Chronological Threat Activity vs. Legitimate Hiring</h3>
-              <p className="chart-card-desc">Daily count of flagged fraudulent listings compared against verified career opportunities.</p>
-            </div>
-            <div className="chart-card-legend-inline">
-              <span className="legend-indicator">
-                <span className="legend-dot" style={{ background: PALETTE.danger }}></span>
-                Critical Threats
-              </span>
-              <span className="legend-indicator">
-                <span className="legend-dot" style={{ background: PALETTE.warning }}></span>
-                High Risk Warnings
-              </span>
-              <span className="legend-indicator">
-                <span className="legend-dot" style={{ background: PALETTE.success }}></span>
-                Verified Postings
-              </span>
-            </div>
-          </div>
-          <ResponsiveContainer width="100%" height={290}>
-            <AreaChart data={timelineData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-              <defs>
-                <linearGradient id="scamGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={PALETTE.danger} stopOpacity={0.35}/>
-                  <stop offset="95%" stopColor={PALETTE.danger} stopOpacity={0.0}/>
-                </linearGradient>
-                <linearGradient id="warningGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={PALETTE.warning} stopOpacity={0.35}/>
-                  <stop offset="95%" stopColor={PALETTE.warning} stopOpacity={0.0}/>
-                </linearGradient>
-                <linearGradient id="legitGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={PALETTE.success} stopOpacity={0.35}/>
-                  <stop offset="95%" stopColor={PALETTE.success} stopOpacity={0.0}/>
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(150, 150, 150, 0.12)" vertical={false} />
-              <XAxis dataKey="date" stroke="var(--text-muted)" fontSize={12} tickLine={false} />
-              <YAxis stroke="var(--text-muted)" fontSize={12} tickLine={false} axisLine={false} />
-              <RechartsTooltip content={<CustomChartTooltip />} />
-              <Area type="monotone" dataKey="Critical Threats" stroke={PALETTE.danger} strokeWidth={2.5} fillOpacity={1} fill="url(#scamGradient)" />
-              <Area type="monotone" dataKey="High Risk Warnings" stroke={PALETTE.warning} strokeWidth={2.5} fillOpacity={1} fill="url(#warningGradient)" />
-              <Area type="monotone" dataKey="Verified Postings" stroke={PALETTE.success} strokeWidth={2.5} fillOpacity={1} fill="url(#legitGradient)" />
-            </AreaChart>
-          </ResponsiveContainer>
-
-          {/* Threat Severity Spectrum Bar */}
-          <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: '1px solid var(--border-color)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
-              <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>Threat Severity Spectrum</span>
-              <span>
-                <strong style={{ color: PALETTE.danger }}>Critical: {severityBreakdown.critical}</strong> &nbsp;•&nbsp; 
-                <strong style={{ color: PALETTE.warning }}>High: {severityBreakdown.high}</strong> &nbsp;•&nbsp; 
-                <strong style={{ color: PALETTE.primary }}>Moderate: {severityBreakdown.moderate}</strong> &nbsp;•&nbsp; 
-                <strong style={{ color: PALETTE.success }}>Safe: {severityBreakdown.safe}</strong>
-              </span>
-            </div>
-            <div style={{ display: 'flex', height: '6px', borderRadius: '3px', overflow: 'hidden', background: 'var(--border-color)' }}>
-              <div style={{ width: `${(severityBreakdown.critical / (stats.total || 1)) * 100}%`, background: PALETTE.danger }} title="Critical Risk (90-100%)"></div>
-              <div style={{ width: `${(severityBreakdown.high / (stats.total || 1)) * 100}%`, background: PALETTE.warning }} title="High Risk (70-89%)"></div>
-              <div style={{ width: `${(severityBreakdown.moderate / (stats.total || 1)) * 100}%`, background: PALETTE.primary }} title="Moderate Risk (50-69%)"></div>
-              <div style={{ width: `${(severityBreakdown.safe / (stats.total || 1)) * 100}%`, background: PALETTE.success }} title="Safe (<50%)"></div>
-            </div>
-          </div>
-        </div>
-
-        {/* 2. Donut Chart: Threat Vectors */}
-        <div className="chart-card">
-          <div className="chart-card-header">
-            <div>
-              <h3 className="chart-card-title">Threat Vector Distribution</h3>
-              <p className="chart-card-desc">Categorization of malicious tactics utilized in flagged postings.</p>
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
-            <ResponsiveContainer width="50%" height={240}>
-              <PieChart>
-                <Pie 
-                  data={vectorData} 
-                  innerRadius={65} 
-                  outerRadius={95} 
-                  paddingAngle={4} 
-                  dataKey="count"
-                >
-                  {vectorData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={VECTOR_COLORS[index % VECTOR_COLORS.length]} />
-                  ))}
-                </Pie>
-                <RechartsTooltip content={<CustomChartTooltip />} />
-              </PieChart>
-            </ResponsiveContainer>
-            <div style={{ width: '48%', fontSize: '0.82rem' }}>
-              {vectorData.map((item, idx) => (
-                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: VECTOR_COLORS[idx % VECTOR_COLORS.length] }}></span>
-                    <span style={{ color: 'var(--text-main)', fontWeight: 500 }}>{item.name}</span>
-                  </span>
-                  <span style={{ fontWeight: 700, color: 'var(--text-muted)', fontFeatureSettings: '"tnum"' }}>
-                    {item.count} ({((item.count / (stats.fake || 1)) * 100).toFixed(0)}%)
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* 3. Bar Chart: Targeted Companies */}
-        <div className="chart-card">
-          <div className="chart-card-header">
-            <div>
-              <h3 className="chart-card-title">Most Spoofed Brands & Organizations</h3>
-              <p className="chart-card-desc">Entities most frequently impersonated in phishing campaigns.</p>
-            </div>
-          </div>
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart 
-              layout="vertical" 
-              data={companyData} 
-              margin={{ top: 10, right: 30, left: 15, bottom: 0 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(150, 150, 150, 0.12)" horizontal={false} />
-              <XAxis type="number" stroke="var(--text-muted)" fontSize={11} tickLine={false} allowDecimals={false} />
-              <YAxis 
-                type="category" 
-                dataKey="name" 
-                stroke="var(--text-muted)" 
-                fontSize={12} 
-                tickLine={false} 
-                axisLine={false}
-                width={130}
-                tick={{ fill: 'var(--text-main)', fontWeight: 500 }}
-              />
-              <RechartsTooltip content={<CustomChartTooltip />} />
-              <Bar dataKey="count" name="Spoofed Postings" fill={PALETTE.primary} radius={[0, 6, 6, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
-      </div>
-      {/* Forensic Incident Log Table Section */}
-      <div className="forensics-card">
-        <div className="forensics-toolbar">
-          <div>
-            <h3 style={{ margin: '0 0 4px 0', fontSize: '1.15rem' }}>Forensic Incident Telemetry Log</h3>
-            <p style={{ margin: 0, fontSize: '0.84rem', color: 'var(--text-muted)' }}>
-              Individual verification records with classification scores, threat vectors, and location indicators.
-            </p>
-          </div>
-
-          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-            {/* Search Input */}
-            <div className="forensics-search-box">
-              <span>🔍</span>
-              <input 
-                type="text" 
-                placeholder="Search entity, role, category..." 
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-              {searchTerm && (
-                <button 
-                  onClick={() => setSearchTerm('')} 
-                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-
-            {/* Filter Pills */}
-            <div className="forensics-filters">
-              <button 
-                className={`filter-pill-btn ${categoryFilter === 'ALL' ? 'active' : ''}`}
-                onClick={() => setCategoryFilter('ALL')}
-              >
-                All ({currentData.length})
-              </button>
-              <button 
-                className={`filter-pill-btn ${categoryFilter === 'SCAMS' ? 'active' : ''}`}
-                onClick={() => setCategoryFilter('SCAMS')}
-              >
-                Scams Only ({stats.fake})
-              </button>
-              <button 
-                className={`filter-pill-btn ${categoryFilter === 'CAMPUS' ? 'active' : ''}`}
-                onClick={() => setCategoryFilter('CAMPUS')}
-              >
-                Campus Drives
-              </button>
-              <button 
-                className={`filter-pill-btn ${categoryFilter === 'PAYMENT' ? 'active' : ''}`}
-                onClick={() => setCategoryFilter('PAYMENT')}
-              >
-                Fee Traps
-              </button>
-              <button 
-                className={`filter-pill-btn ${categoryFilter === 'LEGIT' ? 'active' : ''}`}
-                onClick={() => setCategoryFilter('LEGIT')}
-              >
-                Verified Safe ({stats.genuine})
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Table */}
-        <div className="forensics-table-container">
-          <table className="forensics-table">
-            <thead>
-              <tr>
-                <th>Timestamp</th>
-                <th>Target Entity</th>
-                <th>Role / Opportunity</th>
-                <th>Threat Vector</th>
-                <th>Status</th>
-                <th>Risk Score</th>
-                <th>Region</th>
-              </tr>
-            </thead>
-            <tbody>
-              {paginatedIncidents.map(row => {
-                const isFake = row.prediction === "Fake";
-                const badgeClass = isFake ? "badge-fake" : "badge-legit";
-                const meterColor = row.riskScore >= 80 ? PALETTE.danger : (row.riskScore >= 50 ? PALETTE.warning : PALETTE.success);
-
-                return (
-                  <tr key={row.id}>
-                    <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem', fontFeatureSettings: '"tnum"' }}>
-                      {new Date(row.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                    </td>
-                    <td>
-                      <div className="company-cell">
-                        <span className="company-avatar">
-                          {row.company.substring(0, 2).toUpperCase()}
-                        </span>
-                        <span>{row.company}</span>
-                      </div>
-                    </td>
-                    <td style={{ fontWeight: 500 }}>
-                      {row.role}
-                    </td>
-                    <td>
-                      <span style={{ 
-                        display: 'inline-flex', 
-                        alignItems: 'center', 
-                        gap: '6px', 
-                        fontSize: '0.82rem',
-                        color: isFake ? 'var(--text-main)' : 'var(--text-muted)'
-                      }}>
-                        {isFake ? '⚠️' : '✅'} {row.category}
-                      </span>
-                    </td>
-                    <td>
-                      <span className={`threat-status-badge ${badgeClass}`}>
-                        {isFake ? '🚨 SCAM' : '🛡️ VERIFIED'}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="risk-meter-cell">
-                        <div className="risk-meter-bar-track">
-                          <div 
-                            className="risk-meter-bar-fill" 
-                            style={{ width: `${row.riskScore}%`, background: meterColor }}
-                          ></div>
-                        </div>
-                        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: meterColor, minWidth: '34px', textAlign: 'right', fontFeatureSettings: '"tnum"' }}>
-                          {row.riskScore}%
-                        </span>
-                      </div>
-                    </td>
-                    <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>
-                      {row.location}
-                    </td>
-                  </tr>
-                );
-              })}
-              {filteredIncidents.length === 0 && (
-                <tr>
-                  <td colSpan={7} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
-                    No forensic telemetry incidents found matching "{searchTerm}".
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="forensics-table-footer">
-          <div>
-            <span>
-              Showing {filteredIncidents.length > 0 ? startIndex + 1 : 0}–{Math.min(startIndex + PAGE_SIZE, filteredIncidents.length)} of {filteredIncidents.length} telemetry records
-            </span>
-          </div>
-
-          {totalPages > 1 && (
-            <div className="telemetry-pagination">
-              <button 
-                className="pagination-btn pagination-nav-btn" 
-                disabled={currentPage === 1}
-                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                title="Previous Page"
-              >
-                ‹ Prev
-              </button>
-
-              {getPageNumbers().map((p, idx) => (
-                p === '...' ? (
-                  <span key={`dots-${idx}`} className="pagination-dots">...</span>
-                ) : (
-                  <button
-                    key={`page-${p}`}
-                    className={`pagination-btn ${currentPage === p ? 'active' : ''}`}
-                    onClick={() => setCurrentPage(p)}
+          {/* Empty State: Not enough real database records (< 10) and not in sample mode */}
+          {!hasEnoughData && !showSampleData && (
+            <div className="not-enough-data-card animate-fade-in">
+              <div className="not-enough-data-icon">📊</div>
+              <div className="not-enough-data-body">
+                <h3>Not Enough Scan Data Yet</h3>
+                <p>
+                  The analytics dashboard computes aggregate metrics directly from job postings evaluated and community reports submitted to the local SQLite database.
+                  Currently, <strong>{liveDbStats?.total_db_records ?? 0} of 10</strong> records have been recorded.
+                  Run a few scans on the home page or inspect the sample demonstration data.
+                </p>
+                <div className="not-enough-data-actions">
+                  <Link to="/" className="btn-go-scan">
+                    🔍 Run Scans on Home Page
+                  </Link>
+                  <button 
+                    type="button" 
+                    className="btn-toggle-sample" 
+                    onClick={() => setShowSampleData(true)}
                   >
-                    {p}
+                    📈 View Sample Data Instead
                   </button>
-                )
-              ))}
+                </div>
+              </div>
+            </div>
+          )}
 
+          {/* Sample Data Notice Banner (Visible whenever sample data is active) */}
+          {showSampleData && (
+            <div className="sample-data-banner animate-fade-in">
+              <div className="sample-data-banner-left">
+                <span className="sample-badge">SAMPLE DATA</span>
+                <span>
+                  Showing illustrative demonstration dataset. The local database currently has {liveDbStats?.total_db_records ?? 0} scan/report record{liveDbStats?.total_db_records === 1 ? '' : 's'} (10 required for live metrics).
+                </span>
+              </div>
               <button 
-                className="pagination-btn pagination-nav-btn" 
-                disabled={currentPage === totalPages}
-                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                title="Next Page"
+                type="button" 
+                className="btn-exit-sample" 
+                onClick={() => setShowSampleData(false)}
               >
-                Next ›
+                {hasEnoughData ? "← Switch to Real Database" : "← Back to Status"}
               </button>
             </div>
           )}
-        </div>
-      </div>
-      </>
+
+          {/* Database Info Bar when viewing real database records */}
+          {hasEnoughData && !showSampleData && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
+              <span className="real-data-badge">
+                ✓ Real SQLite Records ({liveDbStats.total_db_records} total events recorded)
+              </span>
+              <button 
+                type="button" 
+                className="btn-toggle-sample" 
+                onClick={() => setShowSampleData(true)}
+              >
+                View Sample Data Comparison
+              </button>
+            </div>
+          )}
+
+          {/* Analytics Dashboard Grid (Visible when hasEnoughData OR viewing sample data) */}
+          {(hasEnoughData || showSampleData) && (
+            <>
+              {/* Pattern Summary Strip */}
+              <div className="threat-posture-strip">
+                <div className="posture-left">
+                  <span className="posture-pill">
+                    ⚠️ Pattern Summary
+                  </span>
+                  <span className="posture-desc">
+                    Upfront registration deposits and brand impersonation represent the most frequent scam vectors flagged during this period.
+                  </span>
+                </div>
+                <div className="posture-meta-items">
+                  <div className="posture-meta-item">
+                    Flagged Scam Rate: <strong>{activeStats.rate}%</strong>
+                  </div>
+                  <div className="posture-meta-item">
+                    Total Evaluated: <strong>{activeStats.total}</strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* 4 Core Operational KPI Stat Cards */}
+              <div className="telemetry-kpi-grid">
+                <div className="kpi-tile">
+                  <div className="kpi-tile-header">
+                    <span className="kpi-label">Analyzed Postings</span>
+                    <span className="kpi-icon-badge">🔍</span>
+                  </div>
+                  <div className="kpi-val">{activeStats.total}</div>
+                  <div className="kpi-footer">
+                    <span className="kpi-trend-pill trend-neutral">
+                      {days ? (activeStats.total / days).toFixed(1) : (activeStats.total / 30).toFixed(1)} / day
+                    </span>
+                    <span>daily scan velocity</span>
+                  </div>
+                </div>
+
+                <div className="kpi-tile">
+                  <div className="kpi-tile-header">
+                    <span className="kpi-label">Scam Interceptions</span>
+                    <span className="kpi-icon-badge">🚨</span>
+                  </div>
+                  <div className="kpi-val" style={{ color: PALETTE.danger }}>{activeStats.fake}</div>
+                  <div className="kpi-footer">
+                    <span className="kpi-trend-pill trend-danger">{activeStats.rate}% of total</span>
+                    <span>flagged fraudulent</span>
+                  </div>
+                </div>
+
+                <div className="kpi-tile">
+                  <div className="kpi-tile-header">
+                    <span className="kpi-label">Verified Legitimate</span>
+                    <span className="kpi-icon-badge">🛡️</span>
+                  </div>
+                  <div className="kpi-val" style={{ color: PALETTE.success }}>{activeStats.genuine}</div>
+                  <div className="kpi-footer">
+                    <span className="kpi-trend-pill trend-success">
+                      {activeStats.total > 0 ? (100 - activeStats.rate).toFixed(1) : 0}% clean
+                    </span>
+                    <span>passed model checks</span>
+                  </div>
+                </div>
+
+                <div className="kpi-tile">
+                  <div className="kpi-tile-header">
+                    <span className="kpi-label">Community Submissions</span>
+                    <span className="kpi-icon-badge">📑</span>
+                  </div>
+                  <div className="kpi-val" style={{ color: PALETTE.purple }}>
+                    {isUsingSample ? 14 : (liveDbStats?.total_db_reports ?? 0)}
+                  </div>
+                  <div className="kpi-footer">
+                    <span className="kpi-trend-pill trend-neutral">
+                      {isUsingSample ? "Sample Data" : "SQLite Database"}
+                    </span>
+                    <span>user reported</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Visual Analytics Charts Grid */}
+              <div className="telemetry-charts-grid">
+                
+                {/* 1. Area Chart: Timeline Volume */}
+                <div className="chart-card chart-card-span-2">
+                  <div className="chart-card-header">
+                    <div>
+                      <h3 className="chart-card-title">Chronological Activity vs. Legitimate Hiring</h3>
+                      <p className="chart-card-desc">Daily count of flagged fraudulent listings compared against verified career opportunities.</p>
+                    </div>
+                    <div className="chart-card-legend-inline">
+                      <span className="legend-indicator">
+                        <span className="legend-dot" style={{ background: PALETTE.danger }}></span>
+                        Critical Threats
+                      </span>
+                      <span className="legend-indicator">
+                        <span className="legend-dot" style={{ background: PALETTE.warning }}></span>
+                        High Risk Warnings
+                      </span>
+                      <span className="legend-indicator">
+                        <span className="legend-dot" style={{ background: PALETTE.success }}></span>
+                        Verified Postings
+                      </span>
+                    </div>
+                  </div>
+                  {activeTimeline.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={290}>
+                      <AreaChart data={activeTimeline} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id="scamGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor={PALETTE.danger} stopOpacity={0.35}/>
+                            <stop offset="95%" stopColor={PALETTE.danger} stopOpacity={0.0}/>
+                          </linearGradient>
+                          <linearGradient id="warningGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor={PALETTE.warning} stopOpacity={0.35}/>
+                            <stop offset="95%" stopColor={PALETTE.warning} stopOpacity={0.0}/>
+                          </linearGradient>
+                          <linearGradient id="legitGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor={PALETTE.success} stopOpacity={0.35}/>
+                            <stop offset="95%" stopColor={PALETTE.success} stopOpacity={0.0}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(150, 150, 150, 0.12)" vertical={false} />
+                        <XAxis dataKey="date" stroke="var(--text-muted)" fontSize={12} tickLine={false} />
+                        <YAxis stroke="var(--text-muted)" fontSize={12} tickLine={false} axisLine={false} />
+                        <RechartsTooltip content={<CustomChartTooltip />} />
+                        <Area type="monotone" dataKey="Critical Threats" stroke={PALETTE.danger} strokeWidth={2.5} fillOpacity={1} fill="url(#scamGradient)" />
+                        <Area type="monotone" dataKey="High Risk Warnings" stroke={PALETTE.warning} strokeWidth={2.5} fillOpacity={1} fill="url(#warningGradient)" />
+                        <Area type="monotone" dataKey="Verified Postings" stroke={PALETTE.success} strokeWidth={2.5} fillOpacity={1} fill="url(#legitGradient)" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div style={{ height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+                      No timeline data points recorded in this timeframe.
+                    </div>
+                  )}
+
+                  {/* Threat Severity Spectrum Bar */}
+                  <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: '1px solid var(--border-color)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                      <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>Severity Distribution</span>
+                      <span>
+                        <strong style={{ color: PALETTE.danger }}>Critical: {activeSeverity.critical}</strong> &nbsp;•&nbsp; 
+                        <strong style={{ color: PALETTE.warning }}>High: {activeSeverity.high}</strong> &nbsp;•&nbsp; 
+                        <strong style={{ color: PALETTE.primary }}>Moderate: {activeSeverity.moderate}</strong> &nbsp;•&nbsp; 
+                        <strong style={{ color: PALETTE.success }}>Safe: {activeSeverity.safe}</strong>
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', height: '6px', borderRadius: '3px', overflow: 'hidden', background: 'var(--border-color)' }}>
+                      <div style={{ width: `${(activeSeverity.critical / (activeStats.total || 1)) * 100}%`, background: PALETTE.danger }} title="Critical Risk (90-100%)"></div>
+                      <div style={{ width: `${(activeSeverity.high / (activeStats.total || 1)) * 100}%`, background: PALETTE.warning }} title="High Risk (70-89%)"></div>
+                      <div style={{ width: `${(activeSeverity.moderate / (activeStats.total || 1)) * 100}%`, background: PALETTE.primary }} title="Moderate Risk (50-69%)"></div>
+                      <div style={{ width: `${(activeSeverity.safe / (activeStats.total || 1)) * 100}%`, background: PALETTE.success }} title="Safe (<50%)"></div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Donut Chart: Threat Vectors */}
+                <div className="chart-card">
+                  <div className="chart-card-header">
+                    <div>
+                      <h3 className="chart-card-title">Scam Vector Distribution</h3>
+                      <p className="chart-card-desc">Categorization of tactics and red flags identified in flagged postings.</p>
+                    </div>
+                  </div>
+                  {activeVectors.length > 0 ? (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+                      <ResponsiveContainer width="50%" height={240}>
+                        <PieChart>
+                          <Pie 
+                            data={activeVectors} 
+                            innerRadius={65} 
+                            outerRadius={95} 
+                            paddingAngle={4} 
+                            dataKey="count"
+                          >
+                            {activeVectors.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={VECTOR_COLORS[index % VECTOR_COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <RechartsTooltip content={<CustomChartTooltip />} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                      <div style={{ width: '48%', fontSize: '0.82rem' }}>
+                        {activeVectors.map((item, idx) => (
+                          <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: VECTOR_COLORS[idx % VECTOR_COLORS.length] }}></span>
+                              <span style={{ color: 'var(--text-main)', fontWeight: 500 }}>{item.name}</span>
+                            </span>
+                            <span style={{ fontWeight: 700, color: 'var(--text-muted)', fontFeatureSettings: '"tnum"' }}>
+                              {item.count} ({((item.count / (activeStats.fake || 1)) * 100).toFixed(0)}%)
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ height: 240, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+                      No categorized scam vectors recorded yet.
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. Bar Chart: Targeted Companies */}
+                <div className="chart-card">
+                  <div className="chart-card-header">
+                    <div>
+                      <h3 className="chart-card-title">Most Spoofed Brands & Organizations</h3>
+                      <p className="chart-card-desc">Entities most frequently referenced in scam postings.</p>
+                    </div>
+                  </div>
+                  {activeCompanies.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={260}>
+                      <BarChart 
+                        layout="vertical" 
+                        data={activeCompanies} 
+                        margin={{ top: 10, right: 30, left: 15, bottom: 0 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(150, 150, 150, 0.12)" horizontal={false} />
+                        <XAxis type="number" stroke="var(--text-muted)" fontSize={11} tickLine={false} allowDecimals={false} />
+                        <YAxis 
+                          type="category" 
+                          dataKey="name" 
+                          stroke="var(--text-muted)" 
+                          fontSize={12} 
+                          tickLine={false} 
+                          axisLine={false}
+                          width={130}
+                          tick={{ fill: 'var(--text-main)', fontWeight: 500 }}
+                        />
+                        <RechartsTooltip content={<CustomChartTooltip />} />
+                        <Bar dataKey="count" name="Flagged Postings" fill={PALETTE.primary} radius={[0, 6, 6, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div style={{ height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+                      No company names detected yet.
+                    </div>
+                  )}
+                </div>
+
+              </div>
+
+              {/* Forensic Incident Log Table Section */}
+              <div className="forensics-card">
+                <div className="forensics-toolbar">
+                  <div>
+                    <h3 style={{ margin: '0 0 4px 0', fontSize: '1.15rem' }}>Detection & Report History</h3>
+                    <p style={{ margin: 0, fontSize: '0.84rem', color: 'var(--text-muted)' }}>
+                      Individual scan events and community reports with risk classification and matched rule indicators.
+                    </p>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    {/* Search Input */}
+                    <div className="forensics-search-box">
+                      <span>🔍</span>
+                      <input 
+                        type="text" 
+                        placeholder="Search entity, role, category..." 
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                      />
+                      {searchTerm && (
+                        <button 
+                          onClick={() => setSearchTerm('')} 
+                          style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Filter Pills */}
+                    <div className="forensics-filters">
+                      <button 
+                        className={`filter-pill-btn ${categoryFilter === 'ALL' ? 'active' : ''}`}
+                        onClick={() => setCategoryFilter('ALL')}
+                      >
+                        All ({activeIncidents.length})
+                      </button>
+                      <button 
+                        className={`filter-pill-btn ${categoryFilter === 'SCAMS' ? 'active' : ''}`}
+                        onClick={() => setCategoryFilter('SCAMS')}
+                      >
+                        Scams Only ({activeStats.fake})
+                      </button>
+                      <button 
+                        className={`filter-pill-btn ${categoryFilter === 'CAMPUS' ? 'active' : ''}`}
+                        onClick={() => setCategoryFilter('CAMPUS')}
+                      >
+                        Campus Drives
+                      </button>
+                      <button 
+                        className={`filter-pill-btn ${categoryFilter === 'PAYMENT' ? 'active' : ''}`}
+                        onClick={() => setCategoryFilter('PAYMENT')}
+                      >
+                        Fee Traps
+                      </button>
+                      <button 
+                        className={`filter-pill-btn ${categoryFilter === 'LEGIT' ? 'active' : ''}`}
+                        onClick={() => setCategoryFilter('LEGIT')}
+                      >
+                        Verified Safe ({activeStats.genuine})
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Table */}
+                <div className="forensics-table-container">
+                  <table className="forensics-table">
+                    <thead>
+                      <tr>
+                        <th>Timestamp</th>
+                        <th>Target Entity</th>
+                        <th>Role / Opportunity</th>
+                        <th>Category / Rule Flag</th>
+                        <th>Status</th>
+                        <th>Risk Score</th>
+                        <th>Source</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {paginatedIncidents.map(row => {
+                        const isFake = row.prediction === "Fake";
+                        const badgeClass = isFake ? "badge-fake" : "badge-legit";
+                        const meterColor = row.riskScore >= 80 ? PALETTE.danger : (row.riskScore >= 50 ? PALETTE.warning : PALETTE.success);
+
+                        return (
+                          <tr key={row.id}>
+                            <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem', fontFeatureSettings: '"tnum"' }}>
+                              {new Date(row.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                            </td>
+                            <td>
+                              <div className="company-cell">
+                                <span className="company-avatar">
+                                  {(row.company || "UN").substring(0, 2).toUpperCase()}
+                                </span>
+                                <span>{row.company || "Unknown"}</span>
+                              </div>
+                            </td>
+                            <td style={{ fontWeight: 500 }}>
+                              {row.role || "Job Posting"}
+                            </td>
+                            <td>
+                              <span style={{ 
+                                display: 'inline-flex', 
+                                alignItems: 'center', 
+                                gap: '6px', 
+                                fontSize: '0.82rem',
+                                color: isFake ? 'var(--text-main)' : 'var(--text-muted)'
+                              }}>
+                                {isFake ? '⚠️' : '✅'} {row.category || "General"}
+                              </span>
+                            </td>
+                            <td>
+                              <span className={`threat-status-badge ${badgeClass}`}>
+                                {isFake ? '🚨 SCAM' : '🛡️ VERIFIED'}
+                              </span>
+                            </td>
+                            <td>
+                              <div className="risk-meter-cell">
+                                <div className="risk-meter-bar-track">
+                                  <div 
+                                    className="risk-meter-bar-fill" 
+                                    style={{ width: `${row.riskScore}%`, background: meterColor }}
+                                  ></div>
+                                </div>
+                                <span style={{ fontSize: '0.82rem', fontWeight: 700, color: meterColor, minWidth: '34px', textAlign: 'right', fontFeatureSettings: '"tnum"' }}>
+                                  {row.riskScore}%
+                                </span>
+                              </div>
+                            </td>
+                            <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+                              {row.type ? `${row.type}` : (row.location || "Scan")}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {filteredIncidents.length === 0 && (
+                        <tr>
+                          <td colSpan={7} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                            No scan records found matching "{searchTerm}".
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="forensics-table-footer">
+                  <div>
+                    <span>
+                      Showing {filteredIncidents.length > 0 ? startIndex + 1 : 0}–{Math.min(startIndex + PAGE_SIZE, filteredIncidents.length)} of {filteredIncidents.length} records
+                    </span>
+                  </div>
+
+                  {totalPages > 1 && (
+                    <div className="telemetry-pagination">
+                      <button 
+                        className="pagination-btn pagination-nav-btn" 
+                        disabled={currentPage === 1}
+                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                        title="Previous Page"
+                      >
+                        ‹ Prev
+                      </button>
+
+                      {getPageNumbers().map((p, idx) => (
+                        p === '...' ? (
+                          <span key={`dots-${idx}`} className="pagination-dots">...</span>
+                        ) : (
+                          <button
+                            key={`page-${p}`}
+                            className={`pagination-btn ${currentPage === p ? 'active' : ''}`}
+                            onClick={() => setCurrentPage(p)}
+                          >
+                            {p}
+                          </button>
+                        )
+                      ))}
+
+                      <button 
+                        className="pagination-btn pagination-nav-btn" 
+                        disabled={currentPage === totalPages}
+                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                        title="Next Page"
+                      >
+                        Next ›
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+        </>
       )}
 
       {/* ── AI Model Benchmarking & Architecture Lab (Phase 3 Tab) ── */}
@@ -727,6 +874,62 @@ const Analytics = () => {
               <p className="benchmark-lab-desc">
                 Trained and evaluated across 4 candidate algorithms on an identical stratified test split (18,880 postings). Preprocessing and class-balancing were strictly isolated to the training split with zero test data contamination.
               </p>
+            </div>
+          </div>
+
+          {/* Static "How It Works" Pipeline Architecture Diagram */}
+          <div className="how-it-works-card">
+            <div className="how-it-works-header">
+              <span className="how-it-works-icon">⚙️</span>
+              <div>
+                <h4 style={{ margin: '0 0 4px 0', fontSize: '0.98rem' }}>How Detection Works: End-to-End Pipeline</h4>
+                <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                  Multi-stage inspection flow combining regex pattern heuristics and machine learning inference.
+                </p>
+              </div>
+            </div>
+
+            <div className="how-it-works-flow">
+              <div className="flow-node">
+                <span className="flow-node-step">Stage 1</span>
+                <span className="flow-node-title">📄 Input Text</span>
+                <span className="flow-node-desc">Length & word validation</span>
+              </div>
+              <span className="flow-arrow">→</span>
+
+              <div className="flow-node">
+                <span className="flow-node-step">Stage 2</span>
+                <span className="flow-node-title">🧹 Cleaning</span>
+                <span className="flow-node-desc">Whitespace & casing normalization</span>
+              </div>
+              <span className="flow-arrow">→</span>
+
+              <div className="flow-node">
+                <span className="flow-node-step">Stage 3 & 4</span>
+                <span className="flow-node-title">🚩 Rules + 🔬 Features</span>
+                <span className="flow-node-desc">Regex heuristics & 5,014 sparse features</span>
+              </div>
+              <span className="flow-arrow">→</span>
+
+              <div className="flow-node flow-node-model">
+                <span className="flow-node-step model-badge">Core Engine</span>
+                <span className="flow-node-title">🤖 ML Model</span>
+                <span className="flow-node-desc">Logistic Regression (balanced)</span>
+              </div>
+              <span className="flow-arrow">→</span>
+
+              <div className="flow-node">
+                <span className="flow-node-step">Stage 6</span>
+                <span className="flow-node-title">⚖️ Threshold</span>
+                <span className="flow-node-desc">0.50 holdout-calibrated cutoff</span>
+              </div>
+              <span className="flow-arrow">→</span>
+
+              <div className="flow-node">
+                <span className="flow-node-step">Stage 7</span>
+                <span className="flow-node-title">🎯 Verdict</span>
+                <span className="flow-node-desc">Risk score & rule override</span>
+              </div>
             </div>
           </div>
 
@@ -749,7 +952,7 @@ const Analytics = () => {
                       <th>Precision</th>
                       <th>Recall (Fake)</th>
                       <th>F1-Score</th>
-                      <th>Latency</th>
+                      <th>Training time</th>
                     </tr>
                   </thead>
                   <tbody>

@@ -1,3 +1,6 @@
+import { useState } from 'react';
+import PipelineTracker from './PipelineTracker';
+
 const getIconForFlag = (flag) => {
   const lower = flag.toLowerCase();
   if (lower.includes('fee') || lower.includes('pay') || lower.includes('deposit') || lower.includes('ctc')) return '💰';
@@ -12,13 +15,12 @@ const getIconForFlag = (flag) => {
 };
 
 const ResultCard = ({ result, onReport }) => {
-  if (!result) return null;
+  const [showAllFlags, setShowAllFlags] = useState(false);
 
-  const isFake = result.prediction === "Fake";
+   const isFake = result.prediction === "Fake";
   const riskScore = result.risk_score;
-  const authenticity = 100 - riskScore;
   const badgeClass = isFake ? "fake" : "genuine";
-  const badgeText = isFake ? "CRITICAL THREAT: SCAM" : "VERIFIED LEGITIMATE";
+  const badgeText = isFake ? "LIKELY SCAM" : "LIKELY GENUINE";
 
   // Deduplicate and filter out composite concatenated strings
   let allFlags = [];
@@ -39,179 +41,113 @@ const ResultCard = ({ result, onReport }) => {
     return true;
   });
 
-  const ling = result.linguistics;
+  const displayedFlags = showAllFlags ? allFlags : allFlags.slice(0, 4);
 
   return (
     <div className="verdict-card animate-fade-in" style={{ borderColor: isFake ? 'rgba(239, 68, 68, 0.35)' : 'rgba(16, 185, 129, 0.35)' }}>
       
-      {/* Verdict Header */}
-      <div className="verdict-header">
-        <div className="verdict-title-group">
-          <h3>Forensic Verification Verdict</h3>
-          <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-            Evaluated by TF-IDF vector pipeline + regex rule heuristics engine
-          </p>
+      {/* 1. Compact Header Row: Title on the left, verdict badge on the right in one line */}
+      <div className="verdict-header-row">
+        <div className="verdict-title-wrap">
+          <h3 className="verdict-title">Result</h3>
         </div>
         <span className={`verdict-badge ${badgeClass}`}>
           {isFake ? '🚨' : '🛡️'} {badgeText}
         </span>
       </div>
 
-      {/* Dual Metrics Grid */}
-      <div className="verdict-meters-grid">
-        <div className="meter-col">
-          <div className="meter-col-title">
-            <span>Threat / Scam Probability</span>
-            <span style={{ color: isFake ? 'var(--danger)' : 'var(--text-muted)' }}>{riskScore}%</span>
-          </div>
-          <div className="meter-track">
-            <div 
-              className="meter-fill" 
-              style={{ width: `${riskScore}%`, background: isFake ? 'var(--danger)' : 'var(--text-muted)' }}
-            ></div>
-          </div>
+      {/* 2. Second Row: Scam probability bar at full width, slim (about 10px) */}
+      <div className="verdict-meter-slim">
+        <div className="meter-slim-header">
+          <span className="meter-slim-label">Scam risk</span>
+          <span className={`meter-slim-value ${isFake ? 'text-danger' : 'text-success'}`}>{riskScore}%</span>
         </div>
-
-        <div className="meter-col">
-          <div className="meter-col-title">
-            <span>Authenticity Confidence</span>
-            <span style={{ color: !isFake ? 'var(--success)' : 'var(--text-muted)' }}>{authenticity}%</span>
-          </div>
-          <div className="meter-track">
-            <div 
-              className="meter-fill" 
-              style={{ width: `${authenticity}%`, background: !isFake ? 'var(--success)' : 'var(--text-muted)' }}
-            ></div>
-          </div>
+        <div className="meter-slim-track">
+          <div 
+            className="meter-slim-fill" 
+            style={{ 
+              width: `${Math.max(riskScore, 4)}%`, 
+              background: isFake ? 'var(--danger)' : 'var(--success)' 
+            }}
+          ></div>
         </div>
       </div>
 
-      {/* Side-by-Side Dual Forensic Analysis (Threat Indicators + Linguistic Profile) */}
-      <div className="verdict-analysis-grid">
+      {/* 3. Third Row: Two Columns on desktop (about 60% Left, 40% Right) */}
+      <div className="verdict-content-grid">
         
-        {/* Left: Detected Threat Indicators (or Clean Security State) */}
-        <div className="indicators-section">
-          <h4 className="indicators-title">
-            <span>{allFlags.length > 0 ? '🚩' : '🛡️'}</span> 
-            {allFlags.length > 0 ? `Detected Threat Indicators (${allFlags.length})` : 'Security Rule Heuristics'}
-          </h4>
+        {/* Left Column (about 60%): Warning signs found (compact 2-column grid of small cards, max 4 + Show all) */}
+        <div className="indicators-col">
+          <div className="indicators-header-row">
+            <h4 className="indicators-title">
+              <span>{allFlags.length > 0 ? '🚩' : '🛡️'}</span> 
+              <span>{allFlags.length > 0 ? `Warning signs found (${allFlags.length})` : 'No warning signs found'}</span>
+            </h4>
+            {allFlags.length > 4 && (
+              <button 
+                type="button" 
+                className="btn-toggle-all-flags" 
+                onClick={() => setShowAllFlags(prev => !prev)}
+              >
+                {showAllFlags ? 'Show fewer ▴' : `Show all (${allFlags.length}) ▾`}
+              </button>
+            )}
+          </div>
 
           {allFlags.length > 0 ? (
-            <div className="indicators-list">
-              {allFlags.map((flag, idx) => (
-                <div key={idx} className="indicator-item">
-                  <span style={{ fontSize: '1.15rem' }}>{getIconForFlag(flag)}</span>
-                  <div>
-                    <div style={{ fontWeight: 600 }}>{flag}</div>
-                    <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>High-confidence rule trigger</div>
+            <div className="indicators-compact-grid">
+              {displayedFlags.map((flag, idx) => (
+                <div key={idx} className="indicator-mini-card">
+                  <span className="indicator-mini-icon">{getIconForFlag(flag)}</span>
+                  <div className="indicator-mini-text">
+                    <strong className="indicator-mini-title">{flag}</strong>
+                    <span className="indicator-mini-desc">High-confidence rule trigger</span>
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="clean-status-box">
+            <div className="clean-status-box compact">
               <span className="clean-icon">✅</span>
-              <strong>No Critical Scam Patterns Detected</strong>
-              <p>Zero rule triggers across payment demands, unverified domains, or off-platform contact redirection.</p>
+              <div className="clean-status-text">
+                <strong>No warning signs found</strong>
+                <p>Zero rule triggers across payment demands, unverified domains, or off-platform contacts.</p>
+              </div>
             </div>
           )}
         </div>
 
-        {/* Right: Forensic Text Profile (Informational signals only) */}
-        {ling && (
-          <div className="forensic-profile-section">
-            <div className="forensic-profile-header">
-              <div className="forensic-profile-title-group">
-                <div className="forensic-profile-title">
-                  <span>📊</span>
-                  <h4>Forensic Text Profile</h4>
-                  <span className="informational-tag">Informational</span>
-                </div>
-                <p className="forensic-profile-subtitle">
-                  Structural signals from text (does not alter model confidence).
-                </p>
-              </div>
+        {/* Right Column (about 40%): Short "What to do" box and "Report this scam" button */}
+        <div className="action-col">
+          <div className={`what-to-do-card ${isFake ? 'is-fake' : 'is-legit'}`}>
+            <div className="what-to-do-header">
+              <span>{isFake ? '⚠️' : '🛡️'}</span>
+              <strong>What to do</strong>
             </div>
-
-            <div className="forensic-profile-grid-2x2">
-              {/* 1. Message Length */}
-              <div className="profile-stat-card">
-                <div className="profile-stat-top">
-                  <span className="profile-stat-icon">📝</span>
-                  <span className="profile-pill">{ling.length_label || "Standard"}</span>
-                </div>
-                <div className="profile-stat-value">
-                  {ling.word_count} <span className="profile-stat-unit">words</span>
-                </div>
-                <div className="profile-stat-sub">
-                  {ling.char_count} chars ({ling.avg_word_len} avg/word)
-                </div>
-              </div>
-
-              {/* 2. Vocabulary Diversity */}
-              <div className="profile-stat-card">
-                <div className="profile-stat-top">
-                  <span className="profile-stat-icon">🔤</span>
-                  <span className="profile-pill">{ling.diversity_label || "Moderate"}</span>
-                </div>
-                <div className="profile-stat-value">
-                  {ling.lexical_diversity}% <span className="profile-stat-unit">unique</span>
-                </div>
-                <div className="profile-stat-sub">
-                  {ling.unique_words} unique words
-                </div>
-              </div>
-
-              {/* 3. Punctuation Urgency */}
-              <div className="profile-stat-card">
-                <div className="profile-stat-top">
-                  <span className="profile-stat-icon">⚡</span>
-                  <span className="profile-pill">{ling.punctuation_label || "Standard"}</span>
-                </div>
-                <div className="profile-stat-value">
-                  {ling.total_punctuation ?? (ling.exclamation_count + ling.question_count)} <span className="profile-stat-unit">marks</span>
-                </div>
-                <div className="profile-stat-sub">
-                  {ling.exclamation_count} excl • {ling.question_count} ques
-                </div>
-              </div>
-
-              {/* 4. Capitalization Density */}
-              <div className="profile-stat-card">
-                <div className="profile-stat-top">
-                  <span className="profile-stat-icon">🔠</span>
-                  <span className="profile-pill">{ling.casing_label || "Standard"}</span>
-                </div>
-                <div className="profile-stat-value">
-                  {ling.uppercase_ratio}% <span className="profile-stat-unit">uppercase</span>
-                </div>
-                <div className="profile-stat-sub">
-                  Capital letter distribution
-                </div>
-              </div>
-            </div>
+            <p className="what-to-do-desc">
+              {isFake 
+                ? "Do not pay any fee, deposit or share Aadhaar/PAN documents. Always verify job postings on the official corporate careers page."
+                : "This checks the posting text only. Always verify the company on its official website."
+              }
+            </p>
+            {isFake && (
+              <button type="button" className="btn-report-scam-direct" onClick={onReport}>
+                <span>🚨</span>
+                <span>Report this scam</span>
+              </button>
+            )}
           </div>
-        )}
+        </div>
 
       </div>
 
-      {/* Recommended Action Advisory */}
-      {isFake ? (
-        <div className="advisory-box danger">
-          <div>
-            <strong>⚠️ Security Advisory:</strong> This posting exhibits critical fraud patterns (unverified domains, payment requests, or brand impersonation). Do not transfer any funds, share Aadhaar/PAN cards, or continue communications over unauthorized channels.
-          </div>
-          <button className="btn-report-threat" onClick={onReport}>
-            📑 Escalate to Global Threat Database
-          </button>
-        </div>
-      ) : (
-        <div className="advisory-box success">
-          <div>
-            <strong>🛡️ Verification Note:</strong> No critical fraud indicators or threat markers were identified in this posting text. Standard employment guidelines apply (never pay upfront fees for job materials or training).
-          </div>
-        </div>
-      )}
+      {/* 4. Fourth Row: Detection Workflow Tracker (collapsed by default as a single slim bar) */}
+      <PipelineTracker 
+        pipeline={result.pipeline} 
+        isFake={isFake} 
+        riskScore={riskScore}
+        defaultCollapsed={true}
+      />
 
     </div>
   );

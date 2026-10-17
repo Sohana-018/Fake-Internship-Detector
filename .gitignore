@@ -8,8 +8,12 @@ __pycache__/
 dist/
 build/
 .env
+.env.*
+*.env
 venv/
 .venv/
+test_env/
+node_modules/
 
 # Training & data science scripts (not needed to run the app)
 step1_audit.py
