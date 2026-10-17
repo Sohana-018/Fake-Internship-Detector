@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, Response, send_from_directory
+from flask import Flask, request, jsonify, Response, send_from_directory
 import joblib
 import re
 from flask_sqlalchemy import SQLAlchemy
@@ -7,6 +7,7 @@ import csv
 import pandas as pd
 from datetime import datetime, timedelta
 import os
+import json
 
 # Import for joblib to successfully load custom transformer
 from features import HandcraftedFeatures
@@ -87,15 +88,75 @@ def detect_red_flags(text):
     }
     return [k for k, v in flags.items() if v]
 
+def compute_linguistic_stats(text):
+    text_str = str(text or "")
+    words = re.findall(r'\b\w+\b', text_str)
+    word_count = len(words)
+    unique_words = len(set(w.lower() for w in words)) if word_count > 0 else 0
+    lexical_diversity = round((unique_words / word_count) * 100, 1) if word_count > 0 else 0
+    char_count = len(text_str)
+    avg_word_len = round(sum(len(w) for w in words) / word_count, 1) if word_count > 0 else 0
+    exclamation_count = text_str.count('!')
+    question_count = text_str.count('?')
+    total_punctuation = exclamation_count + question_count
+    uppercase_chars = sum(1 for c in text_str if c.isupper())
+    uppercase_ratio = round((uppercase_chars / (char_count + 1)) * 100, 1)
+    
+    # Neutral, descriptive labels (informational only)
+    if word_count < 40:
+        length_label = "Short message"
+    elif word_count <= 140:
+        length_label = "Standard length"
+    else:
+        length_label = "Detailed posting"
+        
+    if lexical_diversity <= 65:
+        diversity_label = "High repetition"
+    elif lexical_diversity <= 80:
+        diversity_label = "Moderate diversity"
+    else:
+        diversity_label = "High diversity"
+        
+    if total_punctuation >= 3:
+        punctuation_label = "High urgency punctuation"
+    elif total_punctuation >= 1:
+        punctuation_label = "Moderate punctuation"
+    else:
+        punctuation_label = "Standard punctuation"
+        
+    if uppercase_ratio >= 10:
+        casing_label = "Elevated uppercase"
+    else:
+        casing_label = "Standard casing"
+        
+    return {
+        "word_count": word_count,
+        "unique_words": unique_words,
+        "lexical_diversity": lexical_diversity,
+        "diversity_label": diversity_label,
+        "char_count": char_count,
+        "avg_word_len": avg_word_len,
+        "exclamation_count": exclamation_count,
+        "question_count": question_count,
+        "total_punctuation": total_punctuation,
+        "punctuation_label": punctuation_label,
+        "uppercase_ratio": uppercase_ratio,
+        "casing_label": casing_label,
+        "length_label": length_label
+    }
+
 @app.route("/")
 def home():
     if os.path.exists(os.path.join(FRONTEND_DIST, "index.html")):
         return send_from_directory(FRONTEND_DIST, "index.html")
-    return render_template("index.html", companies=kaggle_companies)
+    return jsonify({
+        "status": "online",
+        "message": "Fake Job Detection API is running. Access Vite dev server at http://localhost:5173 or run 'npm run build' to serve from Flask."
+    }), 200
 
 @app.route("/predict", methods=["POST"])
 def predict():
-    data = request.json
+    data = request.json or {}
     text = data.get("text", "")
 
     # Machine Learning Output
@@ -123,12 +184,16 @@ def predict():
         
     risk_score = min(risk_score, 100)
     reason_text = ", ".join(flags) if flags else "High risk based on machine learning language analysis"
+    
+    # Informational linguistic profile (does not alter prediction or risk_score)
+    linguistics = compute_linguistic_stats(text)
 
     return jsonify({
         "prediction": prediction,
         "risk_score": risk_score,
         "flags": flags,
-        "reason": reason_text
+        "reason": reason_text,
+        "linguistics": linguistics
     })
 
 @app.route("/report", methods=["POST"])
@@ -150,7 +215,10 @@ def report():
 def dashboard():
     if os.path.exists(os.path.join(FRONTEND_DIST, "index.html")):
         return send_from_directory(FRONTEND_DIST, "index.html")
-    return render_template("analytics.html")
+    return jsonify({
+        "status": "online",
+        "message": "Dashboard route. Access Vite dev server at http://localhost:5173 or run 'npm run build' to serve from Flask."
+    }), 200
 
 @app.route("/analytics")
 def get_analytics():
@@ -184,6 +252,17 @@ def get_analytics():
         "whatsapp": whatsapp_count,
         "top_companies": top_companies
     })
+
+@app.route("/api/metrics")
+def get_model_metrics():
+    metrics_path = os.path.join(BASE_DIR, "metrics.json")
+    if os.path.exists(metrics_path):
+        try:
+            with open(metrics_path, "r", encoding="utf-8") as f:
+                return jsonify(json.load(f))
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+    return jsonify({"error": "metrics.json not found"}), 404
 
 @app.route("/export")
 def export_csv():
@@ -256,6 +335,7 @@ def api_check_job():
         prob = 0.1
         
     flags = detect_red_flags(text)
+    linguistics = compute_linguistic_stats(text)
     
     if len(flags) >= 2:
         prediction = "Fake"
@@ -271,7 +351,8 @@ def api_check_job():
         "data": {
             "prediction": prediction,
             "risk_score": risk_score,
-            "flags_detected": flags
+            "flags_detected": flags,
+            "linguistics": linguistics
         }
     })
 

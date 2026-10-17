@@ -4,7 +4,6 @@ import { sampleNews } from '../data/dummyData';
 
 const NewsFeed = () => {
   const [articles, setArticles] = useState([]);
-  const [error, setError] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -18,14 +17,12 @@ const NewsFeed = () => {
         
         const response = await fetch('https://api.rss2json.com/v1/api.json?rss_url=https://feeds.feedburner.com/TheHackersNews');
         const data = await response.json();
-        // Show only the 3 latest items
         if (data && data.items) {
-           setArticles(data.items.slice(0, 3));
+          setArticles(data.items.slice(0, 3));
         } else {
-           throw new Error("No items");
+          setArticles(sampleNews);
         }
-      } catch (err) {
-        // Fallback to sampleNews on error so UI doesn't break
+      } catch {
         setArticles(sampleNews);
       } finally {
         setLoading(false);
@@ -34,58 +31,57 @@ const NewsFeed = () => {
     fetchNews();
   }, []);
 
-  const borderColors = ["var(--warning)", "var(--primary)", "var(--success)"];
-
   return (
-    <div className="panel animate-fade-in" style={{ padding: '15px' }}>
-      <div style={{
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center', 
-        borderBottom: '1px solid var(--border-color)', 
-        paddingBottom: '10px', 
-        marginBottom: '15px'
-      }}>
-        <h2 style={{ color: 'var(--danger)', margin: 0, fontSize: '1.1rem' }}>🚨 Threat Feed</h2>
-      </div>
+    <div className="threat-intel-sidebar animate-fade-in">
       
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-        {loading && <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-muted)', fontSize: '0.9rem' }}><span className="spinner"></span> <span>Fetching threats...</span></div>}
-        {error && <p className="text-danger" style={{ fontSize: '0.9rem' }}>⚠ Connection lost.</p>}
-        
-        {!loading && !error && articles.map((article, index) => {
-          const cleanSnippet = article.description.replace(/<[^>]+>/g, '').split('. ')[0] + "...";
-          return (
-            <div key={index} style={{
-              background: 'var(--input-bg)', 
-              padding: '12px', 
-              borderRadius: '8px', 
-              borderLeft: `3px solid ${borderColors[index]}`,
-              boxShadow: 'var(--shadow-sm)',
-              height: '110px', // Fixed card height
-              boxSizing: 'border-box',
-              display: 'flex',
-              flexDirection: 'column'
-            }}>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.7rem', margin: '0 0 4px 0', fontWeight: '600' }}>
-                🕒 {article.pubDate.split(' ')[0]}
-              </p>
-              <h4 className="line-clamp-2" style={{ margin: '0 0 6px 0', fontSize: '0.95rem', lineHeight: '1.2' }}>
-                <a href={article.link} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--text-main)', textDecoration: 'none' }} title={article.title}>
-                  {article.title}
-                </a>
-              </h4>
-              <p className="line-clamp-3 text-muted" style={{ fontSize: '0.8rem', margin: 0, lineHeight: '1.4', flex: 1 }}>{cleanSnippet}</p>
-            </div>
-          );
-        })}
+      {/* Cyber Threat News Feed */}
+      <div className="threat-intel-card">
+        <div className="threat-intel-header">
+          <h3 className="threat-intel-title">
+            <span>🚨</span> Threat Wire
+          </h3>
+          <span className="rss-pill">THE HACKER NEWS</span>
+        </div>
 
-        {!loading && !error && (
-          <a href="https://thehackernews.com/" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)', fontSize: '0.85rem', textAlign: 'center', textDecoration: 'none', fontWeight: '500', display: 'block', marginTop: '5px' }}>
-            View more news &rarr;
-          </a>
-        )}
+        <div>
+          {loading && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-muted)', fontSize: '0.85rem', padding: '12px 0' }}>
+              <span className="spinner"></span>
+              <span>Syncing live threat feeds...</span>
+            </div>
+          )}
+
+          {!loading && articles.map((article, index) => {
+            const cleanSnippet = article.description.replace(/<[^>]+>/g, '').split('. ')[0] + "...";
+            return (
+              <div key={index} className="news-item-card">
+                <div className="news-item-date">
+                  <span>🕒</span>
+                  <span>{article.pubDate ? article.pubDate.split(' ')[0] : 'Recent Alert'}</span>
+                </div>
+                <h4 className="news-item-title">
+                  <a href={article.link} target="_blank" rel="noopener noreferrer" title={article.title}>
+                    {article.title}
+                  </a>
+                </h4>
+                <p className="news-item-snippet">{cleanSnippet}</p>
+              </div>
+            );
+          })}
+
+          <div style={{ marginTop: '14px', paddingTop: '10px', borderTop: '1px solid var(--border-color)', textAlign: 'center' }}>
+            <a 
+              href="https://thehackernews.com/" 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              style={{ color: 'var(--primary)', fontSize: '0.82rem', fontWeight: 600, textDecoration: 'none' }}
+            >
+              Browse Full Cybersecurity Wire &rarr;
+            </a>
+          </div>
+        </div>
       </div>
+
     </div>
   );
 };

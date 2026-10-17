@@ -1,72 +1,66 @@
-const generateData = () => {
+// High-fidelity Threat Telemetry Dataset
+// Deterministic data generation simulating realistic enterprise threat patterns over 90 days
+
+const now = new Date("2026-10-17T12:00:00Z");
+
+const threatProfiles = [
+  { company: "TCS", role: "Graduate Engineer Trainee Drive", category: "Campus Phishing Drive", prediction: "Fake", risk: 96, flags: 4 },
+  { company: "Google", role: "Software Engineer - Core Systems", category: "Verified Opportunity", prediction: "Legitimate", risk: 8, flags: 0 },
+  { company: "Infosys", role: "Specialist Programmer Placement Drive", category: "Campus Phishing Drive", prediction: "Fake", risk: 94, flags: 3 },
+  { company: "TechCorp Global", role: "Remote Data Entry Clerk", category: "Upfront Security Deposit", prediction: "Fake", risk: 100, flags: 3 },
+  { company: "Microsoft", role: "Azure Cloud Solutions Intern", category: "Verified Opportunity", prediction: "Legitimate", risk: 11, flags: 0 },
+  { company: "Wipro", role: "Project Engineer Mass Hiring", category: "Campus Phishing Drive", prediction: "Fake", risk: 92, flags: 3 },
+  { company: "FastHire Solutions", role: "Telegram Virtual Reviewer", category: "Telegram/WhatsApp Funnel", prediction: "Fake", risk: 84, flags: 2 },
+  { company: "Deloitte", role: "Technology Risk Consultant", category: "Verified Opportunity", prediction: "Legitimate", risk: 14, flags: 0 },
+  { company: "Amazon", role: "AWS Solutions Architect Intern", category: "Verified Opportunity", prediction: "Legitimate", risk: 9, flags: 0 },
+  { company: "CloudScale Analytics", role: "Freelance Form Filling Assistant", category: "Aadhaar/Bank Harvesting", prediction: "Fake", risk: 98, flags: 3 },
+  { company: "Cognizant", role: "GenC Next Campus Hiring", category: "Campus Phishing Drive", prediction: "Fake", risk: 86, flags: 3 },
+  { company: "CryptoPulse Labs", role: "Crypto P2P Payment Assistant", category: "Unrealistic Pay / Task Scam", prediction: "Fake", risk: 80, flags: 2 },
+  { company: "Zoho", role: "Junior Full-Stack Developer", category: "Verified Opportunity", prediction: "Legitimate", risk: 12, flags: 0 },
+  { company: "NexGen Media", role: "Content Marketing Intern", category: "Verified Opportunity", prediction: "Legitimate", risk: 38, flags: 1 },
+  { company: "PrimeWork Staffing", role: "HR Administrative Executive", category: "Upfront Security Deposit", prediction: "Fake", risk: 91, flags: 2 }
+];
+
+const locations = ["Remote", "Bangalore, IN", "Hyderabad, IN", "Pune, IN", "Delhi NCR, IN", "San Francisco, US", "Mumbai, IN"];
+
+const generateStructuredTelemetry = () => {
   const records = [];
-  const now = new Date();
-  
-  const categories = [
-    "Registration Fee", 
-    "Fake Offer Letter", 
-    "Telegram/WhatsApp Interview", 
-    "ID Document Theft", 
-    "Unrealistic Stipend", 
-    "Impersonating Big Company"
-  ];
-  
-  const companies = ["Google", "Amazon", "TCS", "Infosys", "Zoho", "Microsoft", "Wipro"];
-  
-  let idCounter = 1;
+  let id = 1000;
 
-  const createRecord = (daysAgo, isRecent) => {
-    const date = new Date(now.getTime() - daysAgo * 24 * 60 * 60 * 1000);
-    // slightly randomize the time of day
-    date.setHours(Math.floor(Math.random() * 24));
-    date.setMinutes(Math.floor(Math.random() * 60));
+  // Distribute 210 incidents over the last 90 days with realistic weekly surges
+  for (let day = 0; day < 90; day++) {
+    // Weekend vs weekday pattern
+    const isWeekend = (day % 7 === 0 || day % 7 === 6);
+    const incidentCount = isWeekend ? 1 : (day < 14 ? 4 : (day < 45 ? 3 : 2));
 
-    // Shift distributions slightly depending on timeframe
-    const fakeRatio = isRecent ? 0.65 : 0.55; // More fakes recently
-    const isFake = Math.random() < fakeRatio;
-    
-    let category = null;
-    if (isFake) {
-      if (isRecent) {
-         category = categories[Math.floor(Math.random() * 3)]; // Bias to first 3 recently
-      } else {
-         category = categories[Math.floor(Math.random() * categories.length)];
-      }
+    for (let j = 0; j < incidentCount; j++) {
+      const profileIndex = (day * 3 + j * 7 + (id % 5)) % threatProfiles.length;
+      const base = threatProfiles[profileIndex];
+      
+      const recordDate = new Date(now.getTime() - day * 24 * 60 * 60 * 1000 - (j * 3 + 1) * 3600 * 1000);
+      const isFake = base.prediction === "Fake";
+      
+      // Slight deterministic variance
+      const riskScore = isFake ? Math.min(100, base.risk + (id % 7) - 3) : Math.max(5, base.risk + (id % 9) - 4);
+      const confidence = isFake ? riskScore : (100 - riskScore);
+
+      records.push({
+        id: id++,
+        date: recordDate.toISOString(),
+        company: base.company,
+        role: base.role,
+        category: base.category,
+        prediction: base.prediction,
+        riskScore,
+        confidence,
+        flagCount: base.flags,
+        location: locations[(id + day) % locations.length]
+      });
     }
-
-    const company = companies[Math.floor(Math.random() * companies.length)];
-    const confidence = isFake ? Math.floor(Math.random() * 30 + 70) : Math.floor(Math.random() * 30 + 10);
-
-    return {
-      id: idCounter++,
-      date: date.toISOString(),
-      prediction: isFake ? "Fake" : "Genuine",
-      confidence,
-      category,
-      company
-    };
-  };
-
-  // 40 records in the last 7 days
-  for (let i = 0; i < 40; i++) {
-    const daysAgo = Math.random() * 7;
-    records.push(createRecord(daysAgo, true));
   }
 
-  // 80 records between 8 and 30 days (total 120 in last 30 days)
-  for (let i = 0; i < 80; i++) {
-    const daysAgo = 7 + Math.random() * 23;
-    records.push(createRecord(daysAgo, true));
-  }
-
-  // 180 records between 31 and 90 days (total 300)
-  for (let i = 0; i < 180; i++) {
-    const daysAgo = 30 + Math.random() * 60;
-    records.push(createRecord(daysAgo, false));
-  }
-
-  // Sort strictly by date descending
   return records.sort((a, b) => new Date(b.date) - new Date(a.date));
 };
 
-export const mockAnalyticsData = generateData();
+export const mockAnalyticsData = generateStructuredTelemetry();
+

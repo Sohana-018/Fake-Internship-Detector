@@ -2,8 +2,7 @@ import { useState } from 'react';
 import NewsFeed from '../components/NewsFeed';
 import AnalyzeJobPanel from '../components/AnalyzeJobPanel';
 import ReportScamPanel from '../components/ReportScamPanel';
-import { USE_DUMMY_DATA } from '../api';
-
+import '../styles/home.css';
 
 const Home = () => {
   const [reportData, setReportData] = useState({ description: "", reason: "" });
@@ -20,74 +19,141 @@ const Home = () => {
   };
 
   return (
-    <>
-      <div className="main-container">
-        
-        {/* Main Column (Forms & History) */}
-        <div className="main-content">
-          <div className="tabs-container">
-            <button 
-              className={`tab-btn ${activeTab === 'scan' ? 'active' : ''}`}
-              onClick={() => setActiveTab("scan")}
-            >
-              Scan Job Description
-            </button>
-            <button 
-              className={`tab-btn ${activeTab === 'report' ? 'active' : ''}`}
-              onClick={() => setActiveTab("report")}
-            >
-              Report a Scam
-            </button>
-          </div>
+    <div className="home-page animate-fade-in">
 
-          <div style={{ display: activeTab === 'scan' ? 'block' : 'none' }}>
-            <div className="panel animate-fade-in mb-3" style={{ background: 'var(--primary)', color: 'white', padding: '15px 20px' }}>
-              <p style={{ margin: 0, fontSize: '0.95rem', opacity: 0.9 }}>
-                <strong>🛡️ How It Works:</strong> Our AI engine analyzes linguistic patterns, urgency markers, and financial requests. Paste a job description below to verify it.
-              </p>
+      {/* Compact Header Section */}
+      <div className="home-header-section">
+        <div className="home-header-row">
+          <div className="home-headline-group">
+            <div className="home-title-line">
+              <h1>Job & Internship Fraud Scanner</h1>
+              <span className="home-pill-badge">14 FORENSIC DETECTORS</span>
             </div>
-            <AnalyzeJobPanel onReport={handleReportScam} onSaveHistory={handleSaveHistory} />
-            
+            <div className="home-header-caps">
+              <span className="cap-pill">💰 Fee Extortion</span>
+              <span className="cap-pill">🔗 Redirect Trackers</span>
+              <span className="cap-pill">🪪 Identity Harvest</span>
+              <span className="cap-pill">📱 Off-Platform</span>
+            </div>
+          </div>
+          <div className="home-engine-status">
+            <span className="live-pulse-dot-home"></span>
+            <span>ML Engine Live • Hybrid NLP v2.4</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Two-Column Layout */}
+      <div className="home-layout-grid">
+
+        {/* Main Column */}
+        <div className="home-main-col">
+
+          {/* Segmented Navigation Tabs */}
+          <div className="home-nav-tabs" role="tablist">
+            <button
+              className={`home-tab-btn ${activeTab === 'scan' ? 'active' : ''}`}
+              onClick={() => setActiveTab("scan")}
+              role="tab"
+              aria-selected={activeTab === 'scan'}
+            >
+              <span>⚡</span>
+              <span>Content Scanner</span>
+            </button>
+            <button
+              className={`home-tab-btn ${activeTab === 'report' ? 'active' : ''}`}
+              onClick={() => setActiveTab("report")}
+              role="tab"
+              aria-selected={activeTab === 'report'}
+            >
+              <span>📑</span>
+              <span>Submit Scam Report</span>
+            </button>
             {history.length > 0 && (
-              <div className="panel animate-fade-in mt-3">
-                <h2>🕒 Recent Scans</h2>
-                <div>
-                  {history.map((h, i) => (
-                    <div key={i} className="history-item">
-                      <span className="text-muted line-clamp-2" style={{ flex: 1, fontSize: '0.85rem', marginRight: '10px' }}>"{h.text}"</span>
-                      <span style={{ 
-                        background: h.prediction === 'Fake' ? 'var(--danger)' : 'var(--success)', 
-                        color: 'white', 
-                        padding: '4px 8px', 
-                        borderRadius: '12px', 
-                        fontSize: '0.75rem',
-                        fontWeight: 'bold',
-                        whiteSpace: 'nowrap'
-                      }}>
-                        {h.prediction} ({h.prediction === 'Fake' ? h.risk : 100 - h.risk}%)
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <button
+                className={`home-tab-btn ${activeTab === 'history' ? 'active' : ''}`}
+                onClick={() => setActiveTab("history")}
+                role="tab"
+                aria-selected={activeTab === 'history'}
+              >
+                <span>🕒</span>
+                <span>Recent ({history.length})</span>
+              </button>
             )}
           </div>
 
-          <div style={{ display: activeTab === 'report' ? 'block' : 'none' }}>
-            <ReportScamPanel 
-              initialDescription={reportData.description} 
-              initialReason={reportData.reason} 
+          {/* Scanner Tab */}
+          {activeTab === 'scan' && (
+            <AnalyzeJobPanel onReport={handleReportScam} onSaveHistory={handleSaveHistory} />
+          )}
+
+          {/* Report Tab */}
+          {activeTab === 'report' && (
+            <ReportScamPanel
+              initialDescription={reportData.description}
+              initialReason={reportData.reason}
             />
-          </div>
+          )}
+
+          {/* History Tab */}
+          {activeTab === 'history' && history.length > 0 && (
+            <div className="home-history-card animate-fade-in">
+              <div className="home-history-header">
+                <h3>Session Inspection History</h3>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Latest {history.length} scans</span>
+              </div>
+              <div>
+                {history.map((h, i) => {
+                  const isFake = h.prediction === 'Fake';
+                  return (
+                    <div key={i} className="home-history-row">
+                      <span className="home-history-text">"{h.text}"</span>
+                      <span className={`home-verdict-pill ${isFake ? 'pill-fake' : 'pill-legit'}`}>
+                        {isFake ? '🚨 FAKE' : '🛡️ VERIFIED'} ({isFake ? h.risk : 100 - h.risk}%)
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Inline Recent History strip when on scan tab */}
+          {activeTab === 'scan' && history.length > 0 && (
+            <div className="home-history-card animate-fade-in" style={{ marginTop: '20px' }}>
+              <div className="home-history-header">
+                <h3>🕒 Recent Session Checks</h3>
+                <button
+                  onClick={() => setActiveTab('history')}
+                  style={{ background: 'transparent', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600 }}
+                >
+                  View all ({history.length}) &rarr;
+                </button>
+              </div>
+              {history.slice(0, 2).map((h, i) => {
+                const isFake = h.prediction === 'Fake';
+                return (
+                  <div key={i} className="home-history-row">
+                    <span className="home-history-text">"{h.text}"</span>
+                    <span className={`home-verdict-pill ${isFake ? 'pill-fake' : 'pill-legit'}`}>
+                      {isFake ? '🚨 SCAM' : '🛡️ VERIFIED'}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
         </div>
 
-        {/* Sidebar Column (Threat Feed) */}
-        <div className="sidebar">
+        {/* Sidebar Column */}
+        <div className="home-sidebar-col">
           <NewsFeed />
         </div>
-        
+
       </div>
-    </>
+
+    </div>
   );
 };
 

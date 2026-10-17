@@ -18,6 +18,7 @@ const AnalyzeJobPanel = ({ onReport, onSaveHistory }) => {
   }, [result]);
 
   const wordCount = text.trim() ? text.trim().split(/\s+/).length : 0;
+  const charCount = text.length;
   const isInvalidLength = wordCount > 0 && wordCount < 15;
   const isTooLong = wordCount > 800;
 
@@ -27,10 +28,17 @@ const AnalyzeJobPanel = ({ onReport, onSaveHistory }) => {
     setError("");
   };
 
+  const loadPreset = (jobId) => {
+    const job = sampleJobs.find(j => j.id === jobId) || sampleJobs[0];
+    setText(job.text);
+    setError("");
+  };
+
   const handleLoadRandomSample = (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     const randomJob = sampleJobs[Math.floor(Math.random() * sampleJobs.length)];
     setText(randomJob.text);
+    setError("");
   };
 
   const analyzeJob = async () => {
@@ -45,50 +53,110 @@ const AnalyzeJobPanel = ({ onReport, onSaveHistory }) => {
       setResult(data);
       
       if (onSaveHistory) {
-        onSaveHistory({ text: text.substring(0, 60) + "...", prediction: data.prediction, risk: data.risk_score });
+        onSaveHistory({ 
+          text: text.substring(0, 65) + "...", 
+          prediction: data.prediction, 
+          risk: data.risk_score 
+        });
       }
     } catch (err) {
       console.error(err);
-      setError("Failed to connect to the verification server. Please check your connection.");
+      setError("Failed to connect to the threat verification engine. Please verify the Flask server is running on port 5000.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="panel animate-fade-in">
-      <label htmlFor="jobText">Paste the full job description below for AI verification:</label>
-      <textarea 
-        id="jobText"
-        maxLength={3500} 
-        placeholder="E.g., We are looking for an immediate starter. Paid training available for $500 upfront..." 
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        rows={5}
-        aria-describedby="text-help"
-        style={{ marginBottom: '5px' }}
-      ></textarea>
+    <div className="scanner-console-card animate-fade-in">
       
-      <div id="text-help" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: '15px', color: (isInvalidLength || isTooLong) ? 'var(--danger)' : 'var(--text-muted)' }}>
-        <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
-          <span>{wordCount} words</span>
-          <a href="#" onClick={handleLoadRandomSample} style={{ color: 'var(--primary)', textDecoration: 'underline', cursor: 'pointer' }}>Try an example</a>
-        </div>
-        {isInvalidLength && <span>Minimum 15 words required for accuracy.</span>}
-        {isTooLong && <span>Maximum 800 words exceeded.</span>}
+      {/* Console Top Toolbar */}
+      <div className="scanner-top-bar">
+        <span className="scanner-label">
+          <span>📄</span> Content Inspection Terminal
+        </span>
+        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+          Max 3,500 chars • Natural Language Parser v2.4
+        </span>
       </div>
 
-      <div className="flex-row">
+      {/* Preset Quick-Load Strip */}
+      <div className="presets-strip">
+        <span className="presets-label">⚡ Load Sample:</span>
+        <button type="button" className="preset-chip" onClick={() => loadPreset(6)}>
+          🎭 TCS Drive Phishing
+        </button>
+        <button type="button" className="preset-chip" onClick={() => loadPreset(2)}>
+          💰 Data Entry Fee Trap
+        </button>
+        <button type="button" className="preset-chip" onClick={() => loadPreset(1)}>
+          🛡️ Verified SDE Intern
+        </button>
+        <button type="button" className="preset-chip" onClick={() => loadPreset(7)}>
+          ⚖️ Borderline Startup
+        </button>
+      </div>
+
+      {/* Textarea Inspector */}
+      <textarea 
+        id="jobText"
+        className="scanner-textarea"
+        maxLength={3500} 
+        placeholder="Paste full recruitment message, internship drive email, or job posting description here for NLP threat inspection..." 
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={6}
+      ></textarea>
+      
+      {/* Inspection Footer Metrics */}
+      <div className="scanner-footer-bar">
+        <div className="scanner-metrics">
+          <span style={{ fontWeight: 600, color: (isInvalidLength || isTooLong) ? 'var(--danger)' : 'var(--text-main)' }}>
+            {wordCount} words
+          </span>
+          <span>•</span>
+          <span>{charCount} / 3500 characters</span>
+          <span>•</span>
+          <button 
+            type="button" 
+            onClick={handleLoadRandomSample}
+            style={{ background: 'none', border: 'none', padding: 0, color: 'var(--primary)', textDecoration: 'underline', cursor: 'pointer', fontSize: 'inherit', fontWeight: 600 }}
+          >
+            Try an example
+          </button>
+        </div>
+
+        <div>
+          {isInvalidLength && <span style={{ color: 'var(--danger)', fontWeight: 600 }}>⚠️ Minimum 15 words required for model confidence.</span>}
+          {isTooLong && <span style={{ color: 'var(--danger)', fontWeight: 600 }}>⚠️ Maximum 800 words exceeded.</span>}
+          {!isInvalidLength && !isTooLong && wordCount >= 15 && (
+            <span style={{ color: 'var(--success)', fontWeight: 600 }}>✓ Ready for analysis</span>
+          )}
+        </div>
+      </div>
+
+      {/* Action CTA Bar */}
+      <div className="scanner-action-bar">
         <button 
-          className="btn btn-primary" 
+          className="btn-scan-primary" 
           onClick={analyzeJob} 
           disabled={loading || wordCount < 15 || wordCount > 800}
-          style={{ flex: 1 }}
         >
-          {loading ? <span className="spinner"></span> : "Verify Authenticity"}
+          {loading ? (
+            <>
+              <span className="spinner"></span>
+              <span>Running NLP & Heuristics Pipeline...</span>
+            </>
+          ) : (
+            <>
+              <span>⚡</span>
+              <span>Run Threat & Authenticity Analysis</span>
+            </>
+          )}
         </button>
+
         <button 
-          className="btn btn-outline" 
+          className="btn-scan-clear" 
           onClick={handleClear} 
           disabled={loading || (!text && !result && !error)}
         >
@@ -96,13 +164,17 @@ const AnalyzeJobPanel = ({ onReport, onSaveHistory }) => {
         </button>
       </div>
 
+      {/* Error Banner */}
       {error && (
-        <div className="panel animate-fade-in mt-3" style={{ background: 'rgba(239, 68, 68, 0.1)', borderColor: 'rgba(239, 68, 68, 0.3)', padding: '15px' }}>
-          <p className="text-danger" style={{ margin: '0 0 10px 0', fontWeight: 'bold', fontSize: '0.9rem' }}>{error}</p>
-          <button className="btn btn-outline" style={{ fontSize: '0.85rem', padding: '6px 12px' }} onClick={analyzeJob}>Retry Scan</button>
+        <div style={{ marginTop: '16px', padding: '14px 18px', background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: '10px' }}>
+          <p style={{ margin: '0 0 8px 0', color: 'var(--danger)', fontWeight: '700', fontSize: '0.88rem' }}>{error}</p>
+          <button className="btn btn-outline" style={{ fontSize: '0.82rem', padding: '4px 10px' }} onClick={analyzeJob}>
+            Retry Inspection
+          </button>
         </div>
       )}
 
+      {/* Render Result Card */}
       {result && (
         <div ref={resultRef} style={{ scrollMarginTop: '80px' }}>
           <ResultCard 
@@ -111,6 +183,7 @@ const AnalyzeJobPanel = ({ onReport, onSaveHistory }) => {
           />
         </div>
       )}
+
     </div>
   );
 };
