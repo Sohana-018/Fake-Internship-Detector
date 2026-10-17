@@ -13,7 +13,6 @@ With the rise of remote work, employment scams have become increasingly sophisti
 ---
 
 ## 🚀 Core Features
-
 - 🤖 **ML Engine:** TF-IDF + handcrafted features fed into a pipeline trained on the Kaggle fake job postings dataset (~92% accuracy)
 - 🚩 **Rule-Based Heuristics:** Instant flagging of critical warning signs (upfront fees, WhatsApp/Telegram contact, Aadhaar/PAN requests, unrealistic pay)
 - 📊 **Live Analytics Dashboard:** React-powered dashboard with Recharts visualizations — trends, scam categories, impersonated companies, recent detections
@@ -62,6 +61,7 @@ fake_job_detection/
 
 ## 💻 How to Run Locally
 
+<<<<<<< HEAD
 ### Prerequisites
 - Python 3.9+
 - Node.js 18+ (for development / rebuilding the frontend)
@@ -130,3 +130,9 @@ Then open [http://localhost:5173](http://localhost:5173) for the hot-reloading d
 ## 📄 License
 
 This project is open source and available under the [MIT License](LICENSE).
+=======
+1. **Clone the repository:**
+   ```bash
+   git clone [https://github.com/YOUR_USERNAME/Fake-Internship-Detector.git](https://github.com/YOUR_USERNAME/Fake-Internship-Detector.git)
+   cd Fake-Internship-Detector
+>>>>>>> origin/main
